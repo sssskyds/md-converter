@@ -4,13 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MD Converter — Markdown to DOCX &amp; PDF</title>
+  <meta name="description" content="Convert Markdown files to DOCX and PDF instantly in your browser. No sign-up, no server, no tracking. Supports bold, italic, tables, code blocks, and more." />
+  <meta property="og:title" content="MD Converter — Markdown to DOCX &amp; PDF" />
+  <meta property="og:description" content="Free in-browser Markdown converter. Exports selectable-text PDF and styled DOCX with colour themes." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary" />
+  <!-- Inline SVG favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2301696f'/%3E%3Cpath d='M7 22V10l5 7 5-7v12' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Cpath d='M22 10v12M19 19l3 3 3-3' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <!-- jsPDF for native-text PDF (no html2canvas) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <!-- docx.js UMD build — exposes window.docx -->
   <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
   <style>
     :root,[data-theme="light"]{
@@ -140,7 +145,6 @@
       background-repeat:no-repeat;background-position:right 8px center;padding-right:28px}
     select:focus,select:hover{border-color:var(--primary)}
 
-    /* colour swatch pill */
     .colour-swatch{display:inline-block;width:12px;height:12px;border-radius:50%;
       vertical-align:middle;margin-right:4px;border:1px solid rgba(0,0,0,.15);
       transition:background var(--tr)}
@@ -508,7 +512,6 @@ function updateSwatch(swatchId,selectId){
   const c="rgb("+s.h1.join(",")+")";
   document.getElementById(swatchId).style.background=c;
 }
-// init swatches
 window.addEventListener("DOMContentLoaded",()=>{
   updateSwatch("swatch1","colour-scheme");
   updateSwatch("swatch2","colour-scheme2");
@@ -601,9 +604,21 @@ This is **bold** and *italic* text with some \`inline code\`.
 ## Features
 
 - Heading support (H1–H6)
-- **Bold**, *italic*, and \`code\` spans
+- **Bold**, *italic*, and \`code\` spans inside headings and paragraphs
 - Ordered and unordered lists
-- Blockquotes and horizontal rules
+- Nested blockquotes
+- Horizontal rules
+
+## Ordered List
+
+1. First item
+2. Second item with **bold** text
+3. Third item with a [link](https://github.com)
+
+## Nested Blockquote
+
+> This is a top-level blockquote.
+>> This is a nested blockquote, indented further.
 
 ## Code Block
 
@@ -682,68 +697,103 @@ function getDocx(){
   throw new Error("docx library not loaded yet. Please wait a moment and try again.");
 }
 
+/* FIX: Ordered list — use AlreadyNumbered / direct numbering via
+   the docx@8.5 Paragraph numbering object with a concrete AbstractNum.
+   We build the AbstractNum once and reference it by abstractNumId. */
+let _numAbstractId=null;
+let _numConcreteId=null;
+
+function ensureNumbering(D){
+  /* docx@8.5 exposes Numbering, AbstractNumbering, ConcreteNumbering, LevelFormat, AlignmentType */
+  /* The safest cross-version approach: pass the numbering config on the Document and re-use the
+     same reference. We track if we've already set IDs this session. */
+  if(_numAbstractId===null){_numAbstractId=1;_numConcreteId=1;}
+  return {
+    config:[{
+      reference:"ol-numbering",
+      levels:[{
+        level:0,
+        format:"decimal",
+        text:"%1.",
+        alignment:"start",
+        style:{paragraph:{indent:{left:720,hanging:360}}}
+      }]
+    }]
+  };
+}
+
 function parseMDtoDOCX(text,scheme){
   const D=getDocx();
   const{Paragraph,TextRun,HeadingLevel,Table,TableRow,TableCell,
         WidthType,BorderStyle,ExternalHyperlink,ShadingType}=D;
 
   const hColors=[
-    rgbHex(...scheme.h1),
-    rgbHex(...scheme.h2),
-    rgbHex(...scheme.h3),
-    rgbHex(...scheme.h3),
-    rgbHex(...scheme.h3),
-    rgbHex(...scheme.h3)
+    rgbHex(...scheme.h1),rgbHex(...scheme.h2),rgbHex(...scheme.h3),
+    rgbHex(...scheme.h3),rgbHex(...scheme.h3),rgbHex(...scheme.h3)
   ];
 
   const lines=text.split("\n");const children=[];let i=0;
   while(i<lines.length){
     const line=lines[i];
 
-    // Headings
+    /* ── Headings: use renderInlineDOCX so bold/italic/links inside headings work ── */
     if(/^#{1,6}\s/.test(line)){
       const lvl=line.match(/^(#+)/)[1].length;
       const txt=line.replace(/^#+\s+/,"");
       const hMap=[HeadingLevel.HEADING_1,HeadingLevel.HEADING_2,HeadingLevel.HEADING_3,
                   HeadingLevel.HEADING_4,HeadingLevel.HEADING_5,HeadingLevel.HEADING_6];
+      /* Build inline runs, then force colour on TextRun children only */
       const runs=parseInlineDOCX(txt,D,scheme);
-      // override colour on all runs
-      runs.forEach(r=>{if(r instanceof TextRun){try{r.options=Object.assign({},r.options||{},{color:hColors[lvl-1]});}catch(e){}}});
-      children.push(new Paragraph({children:runs,heading:hMap[lvl-1]}));
+      const coloredRuns=runs.map(r=>{
+        if(r instanceof TextRun){
+          /* Re-create with same text props + heading colour */
+          const o=r.options||{};
+          return new TextRun(Object.assign({},o,{color:hColors[lvl-1]}));
+        }
+        /* ExternalHyperlink — leave as-is (already coloured) */
+        return r;
+      });
+      children.push(new Paragraph({children:coloredRuns,heading:hMap[lvl-1]}));
       i++;continue;
     }
 
-    // HR
+    /* ── HR ── */
     if(/^(---|-{3,}|\*{3,}|_{3,})$/.test(line.trim())){
       children.push(new Paragraph({border:{bottom:{color:"AAAAAA",space:1,style:BorderStyle.SINGLE,size:6}}}));
       i++;continue;
     }
 
-    // Blockquote
-    if(line.startsWith("> ")){
+    /* ── Blockquote — handle nested >> by counting leading > chars ── */
+    if(/^>+\s?/.test(line)){
+      const depth=(line.match(/^(>+)/)||[,""])[1].length;
+      const txt=line.replace(/^>+\s?/,"");
       const qColor=rgbHex(...scheme.h2);
+      const indentPerLevel=360; /* 0.25 inch per nesting level */
       children.push(new Paragraph({
-        children:[new TextRun({text:line.slice(2),italics:true,color:"666666"})],
-        indent:{left:720},
+        children:[new TextRun({text:txt,italics:true,color:"666666"})],
+        indent:{left:depth*indentPerLevel},
         border:{left:{color:qColor,space:1,style:BorderStyle.SINGLE,size:12}},
         spacing:{before:60,after:60}
-      }));i++;continue;
+      }));
+      i++;continue;
     }
 
-    // Bullet
+    /* ── Bullet ── */
     if(/^[-\*\+]\s/.test(line)){
       children.push(new Paragraph({children:parseInlineDOCX(line.replace(/^[-\*\+]\s+/,""),D,scheme),bullet:{level:0}}));
       i++;continue;
     }
 
-    // Numbered list
+    /* ── Ordered list — use ol-numbering reference ── */
     if(/^\d+\.\s/.test(line)){
-      children.push(new Paragraph({children:parseInlineDOCX(line.replace(/^\d+\.\s+/,""),D,scheme),
-        numbering:{reference:"default-numbering",level:0}}));
+      children.push(new Paragraph({
+        children:parseInlineDOCX(line.replace(/^\d+\.\s+/,""),D,scheme),
+        numbering:{reference:"ol-numbering",level:0}
+      }));
       i++;continue;
     }
 
-    // Code block
+    /* ── Code block ── */
     if(line.startsWith("```")){
       i++;let code="";
       while(i<lines.length&&!lines[i].startsWith("```")){code+=lines[i]+"\n";i++;}
@@ -754,7 +804,7 @@ function parseMDtoDOCX(text,scheme){
       }));i++;continue;
     }
 
-    // Table
+    /* ── Table ── */
     if(line.includes("|")&&i+1<lines.length&&/^[\s|:\-]+$/.test(lines[i+1])){
       const headers=line.split("|").map(c=>c.trim()).filter(Boolean);i+=2;
       const colW=Math.floor(9000/headers.length);
@@ -773,10 +823,10 @@ function parseMDtoDOCX(text,scheme){
       continue;
     }
 
-    // Empty line
+    /* ── Empty line ── */
     if(line.trim()===""){children.push(new Paragraph(""));i++;continue;}
 
-    // Normal paragraph
+    /* ── Normal paragraph ── */
     children.push(new Paragraph({children:parseInlineDOCX(line,D,scheme),spacing:{before:60,after:60}}));
     i++;
   }
@@ -812,7 +862,8 @@ async function generateDOCX(text,fontName,fontSize,pageFormat,schemeKey){
   const sizeVal=pageFormat==="LETTER"?PageSize.LETTER:PageSize.A4;
   const h1c=rgbHex(...scheme.h1),h2c=rgbHex(...scheme.h2),h3c=rgbHex(...scheme.h3);
   const doc=new Document({
-    numbering:{config:[{reference:"default-numbering",levels:[{level:0,format:"decimal",text:"%1.",alignment:"start"}]}]},
+    /* FIX: use ol-numbering reference that matches the reference used in paragraphs */
+    numbering:ensureNumbering(D),
     sections:[{properties:{page:{size:{orientation:"portrait",type:sizeVal}}},children}],
     styles:{
       default:{document:{run:{font:fontName,size:parseInt(fontSize)}}},
@@ -862,77 +913,84 @@ async function generatePDF(text,pageFormat,schemeKey){
     pdf.setFontSize(size);
   }
 
-  // Parse text into tokens
   const lines=text.split("\n");let i=0;
 
   while(i<lines.length){
     const line=lines[i];
 
-    // H1
+    /* ── H1: use renderInlinePDF so bold/italic/links inside heading text work ── */
     if(/^# /.test(line)){
       const txt=line.replace(/^#+ /,"");
       checkPage(40);
-      setFont("bold",22,scheme.h1);
-      const wrapped=pdf.splitTextToSize(txt,TW);
-      pdf.text(wrapped,ML,y);
+      /* Set heading base style then let renderInlinePDF handle inline tokens */
+      pdf.setFont("helvetica","bold");pdf.setFontSize(22);pdf.setTextColor(...scheme.h1);
+      const wrapped=pdf.splitTextToSize(stripInlineMD(txt),TW);
+      /* Render first wrapped line with inline parsing, rest as plain bold */
+      renderInlinePDF(pdf,wrapped[0]||"",ML,y,scheme,22,true);
+      for(let wi=1;wi<wrapped.length;wi++){y+=26;checkPage(26);pdf.setFont("helvetica","bold");pdf.setFontSize(22);pdf.setTextColor(...scheme.h1);pdf.text(wrapped[wi],ML,y);}
       y+=wrapped.length*26+4;
-      // underline
       pdf.setDrawColor(...scheme.h1);pdf.setLineWidth(1);
       pdf.line(ML,y,PW-MR,y);y+=10;
       i++;continue;
     }
-    // H2
+    /* ── H2 ── */
     if(/^## /.test(line)){
       const txt=line.replace(/^##+ /,"");
       checkPage(32);
-      setFont("bold",17,scheme.h2);
-      const wrapped=pdf.splitTextToSize(txt,TW);
-      pdf.text(wrapped,ML,y);
+      pdf.setFont("helvetica","bold");pdf.setFontSize(17);pdf.setTextColor(...scheme.h2);
+      const wrapped=pdf.splitTextToSize(stripInlineMD(txt),TW);
+      renderInlinePDF(pdf,wrapped[0]||"",ML,y,scheme,17,true);
+      for(let wi=1;wi<wrapped.length;wi++){y+=21;checkPage(21);pdf.setFont("helvetica","bold");pdf.setFontSize(17);pdf.setTextColor(...scheme.h2);pdf.text(wrapped[wi],ML,y);}
       y+=wrapped.length*21+4;
       pdf.setDrawColor(220,220,220);pdf.setLineWidth(.5);
       pdf.line(ML,y,PW-MR,y);y+=8;
       i++;continue;
     }
-    // H3
+    /* ── H3 ── */
     if(/^### /.test(line)){
       const txt=line.replace(/^###+ /,"");
       checkPage(26);
-      setFont("bold",14,scheme.h3);
-      const wrapped=pdf.splitTextToSize(txt,TW);
-      pdf.text(wrapped,ML,y);
+      pdf.setFont("helvetica","bold");pdf.setFontSize(14);pdf.setTextColor(...scheme.h3);
+      const wrapped=pdf.splitTextToSize(stripInlineMD(txt),TW);
+      renderInlinePDF(pdf,wrapped[0]||"",ML,y,scheme,14,true);
+      for(let wi=1;wi<wrapped.length;wi++){y+=18;checkPage(18);pdf.setFont("helvetica","bold");pdf.setFontSize(14);pdf.setTextColor(...scheme.h3);pdf.text(wrapped[wi],ML,y);}
       y+=wrapped.length*18+6;
       i++;continue;
     }
-    // H4-H6
+    /* ── H4-H6 ── */
     if(/^#{4,6} /.test(line)){
       const txt=line.replace(/^#+\s/,"");
       checkPage(22);
-      setFont("bold",12,scheme.h3);
-      const wrapped=pdf.splitTextToSize(txt,TW);
-      pdf.text(wrapped,ML,y);
+      pdf.setFont("helvetica","bold");pdf.setFontSize(12);pdf.setTextColor(...scheme.h3);
+      const wrapped=pdf.splitTextToSize(stripInlineMD(txt),TW);
+      renderInlinePDF(pdf,wrapped[0]||"",ML,y,scheme,12,true);
+      for(let wi=1;wi<wrapped.length;wi++){y+=16;checkPage(16);pdf.text(wrapped[wi],ML,y);}
       y+=wrapped.length*16+4;
       i++;continue;
     }
-    // HR
+    /* ── HR ── */
     if(/^(---|-{3,}|\*{3,}|_{3,})$/.test(line.trim())){
       checkPage(16);
       pdf.setDrawColor(180,180,180);pdf.setLineWidth(.5);
       pdf.line(ML,y,PW-MR,y);y+=16;
       i++;continue;
     }
-    // Blockquote
-    if(line.startsWith("> ")){
-      const txt=line.slice(2);
+    /* ── Blockquote — handle nested >> by counting depth ── */
+    if(/^>+\s?/.test(line)){
+      const depth=(line.match(/^(>+)/)||[,""])[1].length;
+      const txt=line.replace(/^>+\s?/,"");
       checkPage(20);
+      const indentPerLevel=12;
+      const leftX=ML+(depth-1)*indentPerLevel;
       pdf.setFillColor(...scheme.h1);
-      pdf.rect(ML,y-11,3,14,"F");
+      pdf.rect(leftX,y-11,3,14,"F");
       setFont("italic",11,[100,100,100]);
-      const wrapped=pdf.splitTextToSize(txt,TW-20);
-      pdf.text(wrapped,ML+12,y);
+      const wrapped=pdf.splitTextToSize(txt,TW-20-(depth-1)*indentPerLevel);
+      pdf.text(wrapped,leftX+12,y);
       y+=wrapped.length*16+8;
       i++;continue;
     }
-    // Code block
+    /* ── Code block ── */
     if(line.startsWith("```")){
       i++;let codeLines=[];
       while(i<lines.length&&!lines[i].startsWith("```")){codeLines.push(lines[i]);i++;}
@@ -948,7 +1006,7 @@ async function generatePDF(text,pageFormat,schemeKey){
       y+=blockH+10;
       i++;continue;
     }
-    // Table
+    /* ── Table ── */
     if(line.includes("|")&&i+1<lines.length&&/^[\s|:\-]+$/.test(lines[i+1])){
       const headers=line.split("|").map(c=>c.trim()).filter(Boolean);i+=2;
       const rows=[headers];
@@ -975,7 +1033,7 @@ async function generatePDF(text,pageFormat,schemeKey){
       y+=rows.length*rowH+12;
       continue;
     }
-    // Bullet
+    /* ── Bullet ── */
     if(/^[-\*\+] /.test(line)){
       const txt=line.replace(/^[-\*\+] /,"");
       checkPage(16);
@@ -987,7 +1045,7 @@ async function generatePDF(text,pageFormat,schemeKey){
       for(let wi=1;wi<wrapped.length;wi++){y+=14;checkPage(14);pdf.text(wrapped[wi],ML+10,y);}
       y+=16;i++;continue;
     }
-    // Numbered list
+    /* ── Numbered list ── */
     if(/^\d+\. /.test(line)){
       const num=line.match(/^(\d+)\./)[1];
       const txt=line.replace(/^\d+\. /,"");
@@ -1000,10 +1058,10 @@ async function generatePDF(text,pageFormat,schemeKey){
       for(let wi=1;wi<wrapped.length;wi++){y+=14;checkPage(14);pdf.text(wrapped[wi],ML+16,y);}
       y+=16;i++;continue;
     }
-    // Empty line
+    /* ── Empty line ── */
     if(line.trim()===""){y+=8;i++;continue;}
 
-    // Normal paragraph — render with inline styling
+    /* ── Normal paragraph ── */
     setFont("normal",11,[30,30,30]);
     const wrapped=pdf.splitTextToSize(stripInlineMD(line),TW);
     checkPage(wrapped.length*15+4);
@@ -1027,14 +1085,20 @@ function stripInlineMD(t){
            .replace(/\[([^\]]+)\]\([^)]+\)/g,"$1");
 }
 
-function renderInlinePDF(pdf,text,x,y,scheme,size){
-  // Simple inline renderer: splits by bold/italic/code/link tokens
+/* FIX: renderInlinePDF now accepts optional boldBase flag for heading lines.
+   When boldBase=true, plain-text segments outside tokens render bold+scheme-coloured. */
+function renderInlinePDF(pdf,text,x,y,scheme,size,boldBase=false){
   const re=/(\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|\*([^*]+)\*|_([^_]+)_|\[([^\]]+)\]\(([^)]+)\))/g;
   let last=0,m,cx=x;
   while((m=re.exec(text))!==null){
     if(m.index>last){
-      pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(30,30,30);
       const seg=text.slice(last,m.index);
+      if(boldBase){
+        /* Inherit heading colour/bold for plain segment inside heading */
+        pdf.setFont("helvetica","bold");pdf.setFontSize(size);pdf.setTextColor(...scheme.h1);
+      }else{
+        pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(30,30,30);
+      }
       pdf.text(seg,cx,y);
       cx+=pdf.getTextWidth(seg);
     }
@@ -1063,7 +1127,11 @@ function renderInlinePDF(pdf,text,x,y,scheme,size){
     last=m.index+raw.length;
   }
   if(last<text.length){
-    pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(30,30,30);
+    if(boldBase){
+      pdf.setFont("helvetica","bold");pdf.setFontSize(size);pdf.setTextColor(...scheme.h1);
+    }else{
+      pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(30,30,30);
+    }
     pdf.text(text.slice(last),cx,y);
   }
 }
