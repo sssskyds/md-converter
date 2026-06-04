@@ -9,7 +9,6 @@
   <meta property="og:description" content="Free in-browser Markdown converter. Exports selectable-text PDF and styled DOCX with colour themes." />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary" />
-  <!-- Inline SVG favicon -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2301696f'/%3E%3Cpath d='M7 22V10l5 7 5-7v12' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Cpath d='M22 10v12M19 19l3 3 3-3' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -348,6 +347,7 @@
         <label for="colour-scheme">Colours</label>
         <span class="colour-swatch" id="swatch1"></span>
         <select id="colour-scheme" onchange="updateSwatch('swatch1','colour-scheme')">
+          <option value="auto">🌈 Auto-Multicolour</option>
           <option value="teal">🟢 Teal</option>
           <option value="blue">🔵 Blue</option>
           <option value="purple">🟣 Purple</option>
@@ -437,6 +437,7 @@
         <label for="colour-scheme2">Colours</label>
         <span class="colour-swatch" id="swatch2"></span>
         <select id="colour-scheme2" onchange="updateSwatch('swatch2','colour-scheme2')">
+          <option value="auto">🌈 Auto-Multicolour</option>
           <option value="teal">🟢 Teal</option>
           <option value="blue">🔵 Blue</option>
           <option value="purple">🟣 Purple</option>
@@ -496,13 +497,33 @@ marked.setOptions({breaks:true,gfm:true});
 let mdContent="";
 
 /* ── Colour schemes ── */
+/* auto: each heading level (h1..h6) gets its own distinct colour */
 const SCHEMES={
-  teal:  {h1:[1,105,111],  h2:[12,78,84],   h3:[30,90,95],  link:[1,105,111],  code:[51,122,183]},
-  blue:  {h1:[0,70,140],   h2:[0,100,180],  h3:[30,110,190],link:[0,100,180],  code:[51,122,183]},
-  purple:{h1:[100,50,160], h2:[120,60,180], h3:[140,70,190],link:[100,50,160], code:[130,70,180]},
-  warm:  {h1:[180,60,10],  h2:[200,80,20],  h3:[210,100,30],link:[180,60,10],  code:[160,50,10]},
-  minimal:{h1:[30,30,30],  h2:[50,50,50],   h3:[70,70,70],  link:[80,80,80],   code:[80,80,80]}
+  auto:{
+    h1:[1,105,111],   /* teal */
+    h2:[0,70,140],    /* blue */
+    h3:[100,50,160],  /* purple */
+    h4:[180,60,10],   /* warm orange */
+    h5:[67,122,34],   /* green */
+    h6:[140,40,80],   /* rose */
+    link:[1,105,111],
+    code:[51,122,183],
+    /* per-level array used directly in heading rendering */
+    levels:[[1,105,111],[0,70,140],[100,50,160],[180,60,10],[67,122,34],[140,40,80]]
+  },
+  teal:  {h1:[1,105,111],  h2:[12,78,84],   h3:[30,90,95],  h4:[30,90,95],  h5:[30,90,95],  h6:[30,90,95],  link:[1,105,111],  code:[51,122,183], levels:null},
+  blue:  {h1:[0,70,140],   h2:[0,100,180],  h3:[30,110,190],h4:[30,110,190],h5:[30,110,190],h6:[30,110,190],link:[0,100,180],  code:[51,122,183], levels:null},
+  purple:{h1:[100,50,160], h2:[120,60,180], h3:[140,70,190],h4:[140,70,190],h5:[140,70,190],h6:[140,70,190],link:[100,50,160], code:[130,70,180], levels:null},
+  warm:  {h1:[180,60,10],  h2:[200,80,20],  h3:[210,100,30],h4:[210,100,30],h5:[210,100,30],h6:[210,100,30],link:[180,60,10],  code:[160,50,10],  levels:null},
+  minimal:{h1:[30,30,30],  h2:[50,50,50],   h3:[70,70,70],  h4:[70,70,70],  h5:[70,70,70],  h6:[70,70,70],  link:[80,80,80],   code:[80,80,80],   levels:null}
 };
+
+/* Returns the colour array for a heading level (1-based) */
+function hColour(scheme,lvl){
+  if(scheme.levels)return scheme.levels[Math.min(lvl,6)-1];
+  const map=[scheme.h1,scheme.h2,scheme.h3,scheme.h4,scheme.h5,scheme.h6];
+  return map[Math.min(lvl,6)-1]||scheme.h3;
+}
 
 function rgbHex(r,g,b){return((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1).toUpperCase();}
 function getScheme(id){return SCHEMES[document.getElementById(id).value]||SCHEMES.teal;}
@@ -609,6 +630,14 @@ This is **bold** and *italic* text with some \`inline code\`.
 - Nested blockquotes
 - Horizontal rules
 
+### Sub-section Example
+
+This is an H3 heading followed by body text.
+
+#### Deep Heading H4
+
+Content under a fourth-level heading.
+
 ## Ordered List
 
 1. First item
@@ -690,24 +719,19 @@ function showToast(msg,isError=false,isSuccess=false){
 }
 
 /* ═══════════════════════════════════════════════
-   DOCX GENERATION — uses window.docx (UMD build)
+   DOCX GENERATION
+   FIX: parseInlineDOCX now accepts headingColor param.
+   All TextRun instances in a heading are built with the
+   correct colour in a single pass — no post-processing
+   needed. This avoids the r.options=undefined bug in
+   docx@8.5 where TextRun does not expose .options.
 ═══════════════════════════════════════════════ */
 function getDocx(){
   if(typeof window.docx!=="undefined")return window.docx;
   throw new Error("docx library not loaded yet. Please wait a moment and try again.");
 }
 
-/* FIX: Ordered list — use AlreadyNumbered / direct numbering via
-   the docx@8.5 Paragraph numbering object with a concrete AbstractNum.
-   We build the AbstractNum once and reference it by abstractNumId. */
-let _numAbstractId=null;
-let _numConcreteId=null;
-
-function ensureNumbering(D){
-  /* docx@8.5 exposes Numbering, AbstractNumbering, ConcreteNumbering, LevelFormat, AlignmentType */
-  /* The safest cross-version approach: pass the numbering config on the Document and re-use the
-     same reference. We track if we've already set IDs this session. */
-  if(_numAbstractId===null){_numAbstractId=1;_numConcreteId=1;}
+function ensureNumbering(){
   return {
     config:[{
       reference:"ol-numbering",
@@ -727,33 +751,24 @@ function parseMDtoDOCX(text,scheme){
   const{Paragraph,TextRun,HeadingLevel,Table,TableRow,TableCell,
         WidthType,BorderStyle,ExternalHyperlink,ShadingType}=D;
 
-  const hColors=[
-    rgbHex(...scheme.h1),rgbHex(...scheme.h2),rgbHex(...scheme.h3),
-    rgbHex(...scheme.h3),rgbHex(...scheme.h3),rgbHex(...scheme.h3)
-  ];
+  const hMap=[HeadingLevel.HEADING_1,HeadingLevel.HEADING_2,HeadingLevel.HEADING_3,
+              HeadingLevel.HEADING_4,HeadingLevel.HEADING_5,HeadingLevel.HEADING_6];
 
   const lines=text.split("\n");const children=[];let i=0;
   while(i<lines.length){
     const line=lines[i];
 
-    /* ── Headings: use renderInlineDOCX so bold/italic/links inside headings work ── */
+    /* ── Headings ──
+       FIX: Pass headingColor directly into parseInlineDOCX so every
+       TextRun is built with the right colour in one pass.
+       No post-processing of r.options (which is undefined in docx@8.5). */
     if(/^#{1,6}\s/.test(line)){
       const lvl=line.match(/^(#+)/)[1].length;
       const txt=line.replace(/^#+\s+/,"");
-      const hMap=[HeadingLevel.HEADING_1,HeadingLevel.HEADING_2,HeadingLevel.HEADING_3,
-                  HeadingLevel.HEADING_4,HeadingLevel.HEADING_5,HeadingLevel.HEADING_6];
-      /* Build inline runs, then force colour on TextRun children only */
-      const runs=parseInlineDOCX(txt,D,scheme);
-      const coloredRuns=runs.map(r=>{
-        if(r instanceof TextRun){
-          /* Re-create with same text props + heading colour */
-          const o=r.options||{};
-          return new TextRun(Object.assign({},o,{color:hColors[lvl-1]}));
-        }
-        /* ExternalHyperlink — leave as-is (already coloured) */
-        return r;
-      });
-      children.push(new Paragraph({children:coloredRuns,heading:hMap[lvl-1]}));
+      const hc=rgbHex(...hColour(scheme,lvl));
+      /* headingColor passed — parseInlineDOCX applies it to all plain TextRun segments */
+      const runs=parseInlineDOCX(txt,D,scheme,hc);
+      children.push(new Paragraph({children:runs,heading:hMap[Math.min(lvl,6)-1]}));
       i++;continue;
     }
 
@@ -763,15 +778,14 @@ function parseMDtoDOCX(text,scheme){
       i++;continue;
     }
 
-    /* ── Blockquote — handle nested >> by counting leading > chars ── */
+    /* ── Blockquote ── */
     if(/^>+\s?/.test(line)){
       const depth=(line.match(/^(>+)/)||[,""])[1].length;
       const txt=line.replace(/^>+\s?/,"");
-      const qColor=rgbHex(...scheme.h2);
-      const indentPerLevel=360; /* 0.25 inch per nesting level */
+      const qColor=rgbHex(...hColour(scheme,2));
       children.push(new Paragraph({
         children:[new TextRun({text:txt,italics:true,color:"666666"})],
-        indent:{left:depth*indentPerLevel},
+        indent:{left:depth*360},
         border:{left:{color:qColor,space:1,style:BorderStyle.SINGLE,size:12}},
         spacing:{before:60,after:60}
       }));
@@ -784,7 +798,7 @@ function parseMDtoDOCX(text,scheme){
       i++;continue;
     }
 
-    /* ── Ordered list — use ol-numbering reference ── */
+    /* ── Ordered list ── */
     if(/^\d+\.\s/.test(line)){
       children.push(new Paragraph({
         children:parseInlineDOCX(line.replace(/^\d+\.\s+/,""),D,scheme),
@@ -808,9 +822,9 @@ function parseMDtoDOCX(text,scheme){
     if(line.includes("|")&&i+1<lines.length&&/^[\s|:\-]+$/.test(lines[i+1])){
       const headers=line.split("|").map(c=>c.trim()).filter(Boolean);i+=2;
       const colW=Math.floor(9000/headers.length);
-      const thFill=rgbHex(Math.min(scheme.h1[0]+200,240),Math.min(scheme.h1[1]+200,240),Math.min(scheme.h1[2]+200,240));
+      const thFill=rgbHex(Math.min(hColour(scheme,1)[0]+200,240),Math.min(hColour(scheme,1)[1]+200,240),Math.min(hColour(scheme,1)[2]+200,240));
       const rows=[new TableRow({children:headers.map(h=>new TableCell({
-        children:[new Paragraph({children:[new TextRun({text:h,bold:true,color:rgbHex(...scheme.h1)})]})],
+        children:[new Paragraph({children:[new TextRun({text:h,bold:true,color:rgbHex(...hColour(scheme,1))})]})],
         shading:{type:ShadingType.SOLID,fill:thFill,color:thFill},
         width:{size:colW,type:WidthType.DXA}
       }))})];
@@ -833,37 +847,65 @@ function parseMDtoDOCX(text,scheme){
   return children;
 }
 
-function parseInlineDOCX(text,D,scheme){
+/*
+ * parseInlineDOCX — inline Markdown parser for DOCX output.
+ *
+ * headingColor (optional hex string, e.g. "01696F"):
+ *   When provided, all plain-text TextRun segments in this call will
+ *   use this colour and bold=true (i.e. heading context).
+ *   Bold/italic tokens also respect the heading colour for consistency.
+ *   This is the FIX for the heading-omission bug: previously the
+ *   function returned bare TextRun objects and the caller tried to
+ *   re-create them via r.options (undefined in docx@8.5), silently
+ *   dropping all text content.
+ */
+function parseInlineDOCX(text,D,scheme,headingColor){
   const{TextRun,ExternalHyperlink}=D;const runs=[];
   const linkColor=rgbHex(...scheme.link);
   const codeColor=rgbHex(...scheme.code);
+  const isHeading=!!headingColor;
   const re=/(!?\[([^\]]*)\]\(([^)]+)\)|`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
   let last=0,m;
   while((m=re.exec(text))!==null){
-    if(m.index>last)runs.push(new TextRun({text:text.slice(last,m.index)}));
+    if(m.index>last){
+      const seg=text.slice(last,m.index);
+      runs.push(new TextRun(isHeading
+        ?{text:seg,bold:true,color:headingColor}
+        :{text:seg}));
+    }
     const raw=m[0];
-    if(raw.startsWith("***"))      runs.push(new TextRun({text:raw.slice(3,-3),bold:true,italics:true}));
-    else if(raw.startsWith("**")||raw.startsWith("__")) runs.push(new TextRun({text:raw.slice(2,-2),bold:true}));
-    else if(raw.startsWith("`"))   runs.push(new TextRun({text:raw.slice(1,-1),font:"Courier New",color:codeColor,highlight:"lightGray"}));
-    else if(raw.startsWith("![")) runs.push(new TextRun({text:"[image: "+m[2]+"]",italics:true,color:"888888"}));
-    else if(raw.startsWith("["))  runs.push(new ExternalHyperlink({children:[new TextRun({text:m[2],color:linkColor,underline:{type:"single"}})],link:m[3]}));
-    else                           runs.push(new TextRun({text:raw.slice(1,-1),italics:true}));
+    if(raw.startsWith("***"))
+      runs.push(new TextRun({text:raw.slice(3,-3),bold:true,italics:true,color:isHeading?headingColor:undefined}));
+    else if(raw.startsWith("**")||raw.startsWith("__"))
+      runs.push(new TextRun({text:raw.slice(2,-2),bold:true,color:isHeading?headingColor:undefined}));
+    else if(raw.startsWith("`"))
+      runs.push(new TextRun({text:raw.slice(1,-1),font:"Courier New",color:codeColor,highlight:"lightGray"}));
+    else if(raw.startsWith("!["))
+      runs.push(new TextRun({text:"[image: "+m[2]+"]",italics:true,color:"888888"}));
+    else if(raw.startsWith("["))
+      runs.push(new ExternalHyperlink({children:[new TextRun({text:m[2],color:linkColor,underline:{type:"single"}})],link:m[3]}));
+    else
+      runs.push(new TextRun({text:raw.slice(1,-1),italics:true,color:isHeading?headingColor:undefined}));
     last=m.index+raw.length;
   }
-  if(last<text.length)runs.push(new TextRun({text:text.slice(last)}));
+  if(last<text.length)
+    runs.push(new TextRun(isHeading
+      ?{text:text.slice(last),bold:true,color:headingColor}
+      :{text:text.slice(last)}));
   return runs.length?runs:[new TextRun({text})];
 }
 
 async function generateDOCX(text,fontName,fontSize,pageFormat,schemeKey){
   const D=getDocx();
-  const{Document,Packer,PageSize,ShadingType}=D;
+  const{Document,Packer,PageSize}=D;
   const scheme=SCHEMES[schemeKey]||SCHEMES.teal;
   const children=parseMDtoDOCX(text,scheme);
   const sizeVal=pageFormat==="LETTER"?PageSize.LETTER:PageSize.A4;
-  const h1c=rgbHex(...scheme.h1),h2c=rgbHex(...scheme.h2),h3c=rgbHex(...scheme.h3);
+  const h1c=rgbHex(...hColour(scheme,1));
+  const h2c=rgbHex(...hColour(scheme,2));
+  const h3c=rgbHex(...hColour(scheme,3));
   const doc=new Document({
-    /* FIX: use ol-numbering reference that matches the reference used in paragraphs */
-    numbering:ensureNumbering(D),
+    numbering:ensureNumbering(),
     sections:[{properties:{page:{size:{orientation:"portrait",type:sizeVal}}},children}],
     styles:{
       default:{document:{run:{font:fontName,size:parseInt(fontSize)}}},
@@ -884,8 +926,10 @@ async function generateDOCX(text,fontName,fontSize,pageFormat,schemeKey){
 }
 
 /* ═══════════════════════════════════════════════
-   PDF GENERATION — native jsPDF text (selectable)
-   NO html2canvas — all real text, no image snapshot
+   PDF GENERATION
+   FIX: renderInlinePDF now accepts baseColor[] instead of
+   boolean boldBase. This ensures H2/H3 inline plain-text
+   segments use the correct level colour, not always H1.
 ═══════════════════════════════════════════════ */
 async function generatePDF(text,pageFormat,schemeKey){
   const{jsPDF}=window.jspdf;
@@ -918,56 +962,36 @@ async function generatePDF(text,pageFormat,schemeKey){
   while(i<lines.length){
     const line=lines[i];
 
-    /* ── H1: use renderInlinePDF so bold/italic/links inside heading text work ── */
-    if(/^# /.test(line)){
-      const txt=line.replace(/^#+ /,"");
-      checkPage(40);
-      /* Set heading base style then let renderInlinePDF handle inline tokens */
-      pdf.setFont("helvetica","bold");pdf.setFontSize(22);pdf.setTextColor(...scheme.h1);
+    /* heading helper — DRY for H1-H6 */
+    const hm=line.match(/^(#{1,6})\s+(.*)/);
+    if(hm){
+      const lvl=hm[1].length;
+      const txt=hm[2];
+      const hRGB=hColour(scheme,lvl);
+      /* size/spacing by level */
+      const sz=[22,17,14,12,11,11][lvl-1];
+      const lh=[26,21,18,16,15,15][lvl-1];
+      const sp=[14,8,6,4,2,2][lvl-1];
+      checkPage(sz+sp+10);
+      pdf.setFont("helvetica","bold");pdf.setFontSize(sz);pdf.setTextColor(...hRGB);
       const wrapped=pdf.splitTextToSize(stripInlineMD(txt),TW);
-      /* Render first wrapped line with inline parsing, rest as plain bold */
-      renderInlinePDF(pdf,wrapped[0]||"",ML,y,scheme,22,true);
-      for(let wi=1;wi<wrapped.length;wi++){y+=26;checkPage(26);pdf.setFont("helvetica","bold");pdf.setFontSize(22);pdf.setTextColor(...scheme.h1);pdf.text(wrapped[wi],ML,y);}
-      y+=wrapped.length*26+4;
-      pdf.setDrawColor(...scheme.h1);pdf.setLineWidth(1);
-      pdf.line(ML,y,PW-MR,y);y+=10;
+      /* FIX: pass hRGB as baseColor so plain segments get the heading's own colour */
+      renderInlinePDF(pdf,wrapped[0]||"",ML,y,scheme,sz,hRGB);
+      for(let wi=1;wi<wrapped.length;wi++){
+        y+=lh;checkPage(lh);
+        pdf.setFont("helvetica","bold");pdf.setFontSize(sz);pdf.setTextColor(...hRGB);
+        pdf.text(wrapped[wi],ML,y);
+      }
+      y+=wrapped.length*lh+sp;
+      /* underline for H1 and H2 */
+      if(lvl<=2){
+        pdf.setDrawColor(lvl===1?hRGB[0]:220,lvl===1?hRGB[1]:220,lvl===1?hRGB[2]:220);
+        pdf.setLineWidth(lvl===1?1:.5);
+        pdf.line(ML,y,PW-MR,y);y+=8;
+      }
       i++;continue;
     }
-    /* ── H2 ── */
-    if(/^## /.test(line)){
-      const txt=line.replace(/^##+ /,"");
-      checkPage(32);
-      pdf.setFont("helvetica","bold");pdf.setFontSize(17);pdf.setTextColor(...scheme.h2);
-      const wrapped=pdf.splitTextToSize(stripInlineMD(txt),TW);
-      renderInlinePDF(pdf,wrapped[0]||"",ML,y,scheme,17,true);
-      for(let wi=1;wi<wrapped.length;wi++){y+=21;checkPage(21);pdf.setFont("helvetica","bold");pdf.setFontSize(17);pdf.setTextColor(...scheme.h2);pdf.text(wrapped[wi],ML,y);}
-      y+=wrapped.length*21+4;
-      pdf.setDrawColor(220,220,220);pdf.setLineWidth(.5);
-      pdf.line(ML,y,PW-MR,y);y+=8;
-      i++;continue;
-    }
-    /* ── H3 ── */
-    if(/^### /.test(line)){
-      const txt=line.replace(/^###+ /,"");
-      checkPage(26);
-      pdf.setFont("helvetica","bold");pdf.setFontSize(14);pdf.setTextColor(...scheme.h3);
-      const wrapped=pdf.splitTextToSize(stripInlineMD(txt),TW);
-      renderInlinePDF(pdf,wrapped[0]||"",ML,y,scheme,14,true);
-      for(let wi=1;wi<wrapped.length;wi++){y+=18;checkPage(18);pdf.setFont("helvetica","bold");pdf.setFontSize(14);pdf.setTextColor(...scheme.h3);pdf.text(wrapped[wi],ML,y);}
-      y+=wrapped.length*18+6;
-      i++;continue;
-    }
-    /* ── H4-H6 ── */
-    if(/^#{4,6} /.test(line)){
-      const txt=line.replace(/^#+\s/,"");
-      checkPage(22);
-      pdf.setFont("helvetica","bold");pdf.setFontSize(12);pdf.setTextColor(...scheme.h3);
-      const wrapped=pdf.splitTextToSize(stripInlineMD(txt),TW);
-      renderInlinePDF(pdf,wrapped[0]||"",ML,y,scheme,12,true);
-      for(let wi=1;wi<wrapped.length;wi++){y+=16;checkPage(16);pdf.text(wrapped[wi],ML,y);}
-      y+=wrapped.length*16+4;
-      i++;continue;
-    }
+
     /* ── HR ── */
     if(/^(---|-{3,}|\*{3,}|_{3,})$/.test(line.trim())){
       checkPage(16);
@@ -975,17 +999,16 @@ async function generatePDF(text,pageFormat,schemeKey){
       pdf.line(ML,y,PW-MR,y);y+=16;
       i++;continue;
     }
-    /* ── Blockquote — handle nested >> by counting depth ── */
+    /* ── Blockquote ── */
     if(/^>+\s?/.test(line)){
       const depth=(line.match(/^(>+)/)||[,""])[1].length;
       const txt=line.replace(/^>+\s?/,"");
       checkPage(20);
-      const indentPerLevel=12;
-      const leftX=ML+(depth-1)*indentPerLevel;
-      pdf.setFillColor(...scheme.h1);
+      const leftX=ML+(depth-1)*12;
+      pdf.setFillColor(...hColour(scheme,1));
       pdf.rect(leftX,y-11,3,14,"F");
       setFont("italic",11,[100,100,100]);
-      const wrapped=pdf.splitTextToSize(txt,TW-20-(depth-1)*indentPerLevel);
+      const wrapped=pdf.splitTextToSize(txt,TW-20-(depth-1)*12);
       pdf.text(wrapped,leftX+12,y);
       y+=wrapped.length*16+8;
       i++;continue;
@@ -1015,13 +1038,14 @@ async function generatePDF(text,pageFormat,schemeKey){
       }
       const colW=TW/headers.length;const rowH=18;
       checkPage(rows.length*rowH+8);
+      const h1rgb=hColour(scheme,1);
       rows.forEach((row,ri)=>{
         row.forEach((cell,ci)=>{
           const cx=ML+ci*colW;const cy=y+(ri*rowH);
           if(ri===0){
-            pdf.setFillColor(...scheme.h1.map(v=>Math.min(v+190,245)));
+            pdf.setFillColor(...h1rgb.map(v=>Math.min(v+190,245)));
             pdf.rect(cx,cy-12,colW,rowH,"F");
-            setFont("bold",9,scheme.h1);
+            setFont("bold",9,h1rgb);
           }else{
             pdf.setDrawColor(220,220,220);pdf.setLineWidth(.3);
             pdf.rect(cx,cy-12,colW,rowH,"S");
@@ -1038,7 +1062,7 @@ async function generatePDF(text,pageFormat,schemeKey){
       const txt=line.replace(/^[-\*\+] /,"");
       checkPage(16);
       setFont("normal",11,[40,40,40]);
-      pdf.setFillColor(...scheme.h2);
+      pdf.setFillColor(...hColour(scheme,2));
       pdf.circle(ML+3,y-4,2,"F");
       const wrapped=pdf.splitTextToSize(txt,TW-14);
       renderInlinePDF(pdf,wrapped[0]||"",ML+10,y,scheme,11);
@@ -1050,7 +1074,7 @@ async function generatePDF(text,pageFormat,schemeKey){
       const num=line.match(/^(\d+)\./)[1];
       const txt=line.replace(/^\d+\. /,"");
       checkPage(16);
-      setFont("bold",11,scheme.h2);
+      setFont("bold",11,hColour(scheme,2));
       pdf.text(num+".",ML,y);
       setFont("normal",11,[40,40,40]);
       const wrapped=pdf.splitTextToSize(txt,TW-18);
@@ -1085,17 +1109,23 @@ function stripInlineMD(t){
            .replace(/\[([^\]]+)\]\([^)]+\)/g,"$1");
 }
 
-/* FIX: renderInlinePDF now accepts optional boldBase flag for heading lines.
-   When boldBase=true, plain-text segments outside tokens render bold+scheme-coloured. */
-function renderInlinePDF(pdf,text,x,y,scheme,size,boldBase=false){
+/*
+ * renderInlinePDF — inline Markdown renderer for PDF.
+ *
+ * baseColor (optional [r,g,b]):
+ *   When provided, plain-text segments outside inline tokens
+ *   render in this colour with bold styling (heading context).
+ *   FIX: replaces the old boolean boldBase which always used
+ *   scheme.h1, incorrectly colouring H2/H3 segments.
+ */
+function renderInlinePDF(pdf,text,x,y,scheme,size,baseColor){
   const re=/(\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|\*([^*]+)\*|_([^_]+)_|\[([^\]]+)\]\(([^)]+)\))/g;
   let last=0,m,cx=x;
   while((m=re.exec(text))!==null){
     if(m.index>last){
       const seg=text.slice(last,m.index);
-      if(boldBase){
-        /* Inherit heading colour/bold for plain segment inside heading */
-        pdf.setFont("helvetica","bold");pdf.setFontSize(size);pdf.setTextColor(...scheme.h1);
+      if(baseColor){
+        pdf.setFont("helvetica","bold");pdf.setFontSize(size);pdf.setTextColor(...baseColor);
       }else{
         pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(30,30,30);
       }
@@ -1127,8 +1157,8 @@ function renderInlinePDF(pdf,text,x,y,scheme,size,boldBase=false){
     last=m.index+raw.length;
   }
   if(last<text.length){
-    if(boldBase){
-      pdf.setFont("helvetica","bold");pdf.setFontSize(size);pdf.setTextColor(...scheme.h1);
+    if(baseColor){
+      pdf.setFont("helvetica","bold");pdf.setFontSize(size);pdf.setTextColor(...baseColor);
     }else{
       pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(30,30,30);
     }
