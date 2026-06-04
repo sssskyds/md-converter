@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MD Converter &mdash; Markdown to DOCX &amp; PDF</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://unpkg.com/docx@8.2.2/build/index.js"></script>
+  <style>
+    :root {
+      --bg:#0f1117;--surface:#1a1d27;--surface2:#22263a;--accent:#6c63ff;
+      --accent2:#ff6584;--text:#e2e8f0;--muted:#8892a4;--border:#2d3147;
+      --radius:12px;--shadow:0 4px 24px rgba(0,0,0,0.4);
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+    header{
+      background:linear-gradient(135deg,#1a1d27 0%,#12152a 100%);
+      border-bottom:1px solid var(--border);padding:1.2rem 2rem;
+      display:flex;align-items:center;gap:1rem;position:sticky;top:0;z-index:100;
+    }
+    .logo{
+      width:40px;height:40px;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      border-radius:10px;display:flex;align-items:center;justify-content:center;
+      font-weight:900;font-size:1.1rem;
+    }
+    header h1{font-size:1.3rem;font-weight:700;}
+    header h1 span{color:var(--accent);}
+    .badge{
+      margin-left:auto;background:rgba(108,99,255,0.15);color:var(--accent);
+      border:1px solid rgba(108,99,255,0.3);padding:.25rem .75rem;
+      border-radius:20px;font-size:.75rem;font-weight:600;
+    }
+    .hero{text-align:center;padding:3rem 1rem 1.5rem;}
+    .hero h2{
+      font-size:clamp(1.8rem,4vw,2.8rem);font-weight:800;
+      background:linear-gradient(135deg,#fff 30%,var(--accent));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+      margin-bottom:.75rem;
+    }
+    .hero p{color:var(--muted);font-size:1.05rem;max-width:520px;margin:0 auto 1.25rem;}
+    .features{display:flex;justify-content:center;gap:.75rem;flex-wrap:wrap;}
+    .fp{
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:20px;padding:.3rem .85rem;font-size:.78rem;color:var(--muted);
+    }
+    .fp span{color:var(--accent);margin-right:3px;}
+    .main{max-width:1200px;margin:0 auto;padding:1.5rem 1.5rem 3rem;}
+    .tabs{
+      display:flex;background:var(--surface);border:1px solid var(--border);
+      border-radius:var(--radius) var(--radius) 0 0;overflow:hidden;
+    }
+    .tab-btn{
+      flex:1;background:transparent;border:none;color:var(--muted);
+      padding:.85rem 1rem;cursor:pointer;font-size:.9rem;font-weight:600;
+      transition:all .2s;border-bottom:3px solid transparent;
+    }
+    .tab-btn:hover{color:var(--text);background:rgba(255,255,255,0.03);}
+    .tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);background:rgba(108,99,255,0.07);}
+    .panel{
+      background:var(--surface);border:1px solid var(--border);
+      border-top:none;border-radius:0 0 var(--radius) var(--radius);
+      padding:1.5rem;display:none;
+    }
+    .panel.active{display:block;}
+    .drop-zone{
+      border:2px dashed var(--border);border-radius:var(--radius);
+      padding:2.5rem;text-align:center;cursor:pointer;transition:all .2s;
+      background:rgba(108,99,255,0.03);margin-bottom:1rem;
+    }
+    .drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:rgba(108,99,255,0.08);}
+    .drop-icon{font-size:2.5rem;margin-bottom:.5rem;}
+    .drop-zone p{color:var(--muted);font-size:.9rem;}
+    .drop-zone strong{color:var(--accent);}
+    #file-input{display:none;}
+    .editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+    @media(max-width:700px){.editor-grid{grid-template-columns:1fr;}}
+    .pane-label{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.5rem;}
+    textarea#md-input{
+      width:100%;height:380px;background:var(--surface2);border:1px solid var(--border);
+      border-radius:8px;color:var(--text);font-family:'Cascadia Code','Fira Code',monospace;
+      font-size:.88rem;padding:1rem;resize:vertical;outline:none;line-height:1.7;transition:border-color .2s;
+    }
+    textarea#md-input:focus{border-color:var(--accent);}
+    #preview{
+      height:380px;overflow-y:auto;background:#fff;border-radius:8px;
+      padding:1.25rem 1.5rem;color:#1a1a1a;font-size:.9rem;line-height:1.8;
+    }
+    #preview h1{font-size:1.6rem;border-bottom:2px solid #eee;padding-bottom:.3rem;margin:.75rem 0 .4rem;}
+    #preview h2{font-size:1.3rem;border-bottom:1px solid #eee;padding-bottom:.25rem;margin:.75rem 0 .4rem;}
+    #preview h3{font-size:1.1rem;margin:.75rem 0 .4rem;}
+    #preview p{margin-bottom:.75rem;}
+    #preview ul,#preview ol{padding-left:1.5rem;margin-bottom:.75rem;}
+    #preview pre{background:#f4f4f8;border-radius:6px;padding:.75rem 1rem;overflow-x:auto;font-size:.82rem;margin-bottom:.75rem;}
+    #preview code{background:#f0f0f5;padding:.1em .4em;border-radius:4px;font-size:.85em;}
+    #preview pre code{background:none;padding:0;}
+    #preview blockquote{border-left:4px solid #6c63ff;padding-left:1rem;color:#555;margin-bottom:.75rem;}
+    #preview table{border-collapse:collapse;width:100%;margin-bottom:.75rem;}
+    #preview th,#preview td{border:1px solid #ddd;padding:.5rem .75rem;text-align:left;}
+    #preview th{background:#f4f4f8;font-weight:700;}
+    #preview a{color:#6c63ff;}
+    #preview img{max-width:100%;border-radius:6px;}
+    .options-bar{
+      display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;
+      margin:1rem 0;padding:1rem;background:var(--surface2);
+      border-radius:8px;border:1px solid var(--border);
+    }
+    .opt-group{display:flex;align-items:center;gap:.5rem;}
+    .opt-group label{font-size:.82rem;color:var(--muted);}
+    select{
+      background:var(--surface);border:1px solid var(--border);color:var(--text);
+      padding:.35rem .6rem;border-radius:6px;font-size:.82rem;outline:none;
+    }
+    .btn-row{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1rem;}
+    .btn{
+      display:inline-flex;align-items:center;gap:.5rem;
+      padding:.75rem 1.5rem;border-radius:8px;border:none;cursor:pointer;
+      font-weight:700;font-size:.9rem;transition:all .2s;
+    }
+    .btn-primary{background:linear-gradient(135deg,var(--accent),#8b80ff);color:#fff;box-shadow:0 4px 15px rgba(108,99,255,0.35);}
+    .btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(108,99,255,0.45);}
+    .btn-danger{background:linear-gradient(135deg,var(--accent2),#ff8fa3);color:#fff;box-shadow:0 4px 15px rgba(255,101,132,0.3);}
+    .btn-danger:hover{transform:translateY(-1px);}
+    .btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border);}
+    .btn-secondary:hover{border-color:var(--accent);color:var(--accent);}
+    .progress-wrap{display:none;margin-top:.75rem;}
+    .progress-wrap.show{display:block;}
+    .progress-bar-bg{background:var(--surface2);border-radius:10px;height:6px;overflow:hidden;}
+    .progress-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:10px;transition:width .3s;width:0%;}
+    .progress-label{font-size:.78rem;color:var(--muted);margin-top:.4rem;}
+    #toast{
+      position:fixed;bottom:2rem;right:2rem;background:var(--surface);
+      border:1px solid var(--border);border-left:4px solid var(--accent);
+      padding:.85rem 1.25rem;border-radius:10px;font-size:.88rem;
+      box-shadow:var(--shadow);transform:translateY(100px);opacity:0;
+      transition:all .3s;z-index:999;max-width:320px;
+    }
+    #toast.show{transform:translateY(0);opacity:1;}
+    #toast.error{border-left-color:var(--accent2);}
+    footer{text-align:center;padding:2rem 1rem;color:var(--muted);font-size:.8rem;border-top:1px solid var(--border);}
+    footer a{color:var(--accent);text-decoration:none;}
+    #file-name-display{color:var(--accent);font-size:.85rem;margin-bottom:.5rem;}
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">MD</div>
+  <h1>MD <span>Converter</span></h1>
+  <div class="badge">Free &bull; Browser-based</div>
+</header>
+
+<section class="hero">
+  <h2>Markdown to DOCX &amp; PDF</h2>
+  <p>Convert your Markdown files instantly &mdash; no signup, no server upload, 100% in your browser.</p>
+  <div class="features">
+    <div class="fp"><span>&#10004;</span>No server upload</div>
+    <div class="fp"><span>&#10004;</span>DOCX &amp; PDF output</div>
+    <div class="fp"><span>&#10004;</span>Live preview</div>
+    <div class="fp"><span>&#10004;</span>Tables, code &amp; lists</div>
+  </div>
+</section>
+
+<main class="main">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('upload')">&#128194; Upload File</button>
+    <button class="tab-btn" onclick="switchTab('editor')">&#9999; Paste / Type</button>
+  </div>
+
+  <!-- UPLOAD PANEL -->
+  <div class="panel active" id="tab-upload">
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <div class="drop-icon">&#128196;</div>
+      <p><strong>Click to browse</strong> or drag &amp; drop your <code>.md</code> file here</p>
+      <p style="margin-top:.4rem;font-size:.78rem;">Supports .md .markdown .txt</p>
+    </div>
+    <input type="file" id="file-input" accept=".md,.markdown,.txt" />
+    <div id="file-name-display"></div>
+    <div class="options-bar">
+      <div class="opt-group"><label>Font:</label>
+        <select id="font-select">
+          <option>Calibri</option><option>Arial</option>
+          <option>Times New Roman</option><option>Georgia</option>
+        </select>
+      </div>
+      <div class="opt-group"><label>Page:</label>
+        <select id="page-size"><option>A4</option><option>Letter</option></select>
+      </div>
+      <div class="opt-group"><label>PDF Theme:</label>
+        <select id="pdf-theme"><option value="light">Light</option><option value="dark">Dark</option></select>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="convertToDOCX()">&#128195; Download DOCX</button>
+      <button class="btn btn-danger" onclick="convertToPDF()">&#128213; Download PDF</button>
+      <button class="btn btn-secondary" onclick="clearAll()">&#128465; Clear</button>
+    </div>
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-bar-bg"><div class="progress-bar" id="progress-bar"></div></div>
+      <div class="progress-label" id="progress-label">Processing...</div>
+    </div>
+  </div>
+
+  <!-- EDITOR PANEL -->
+  <div class="panel" id="tab-editor">
+    <div class="editor-grid">
+      <div>
+        <div class="pane-label">&#9999; Markdown Source</div>
+        <textarea id="md-input" placeholder="# Hello World&#10;&#10;Type **Markdown** here..." oninput="updatePreview()"></textarea>
+      </div>
+      <div>
+        <div class="pane-label">&#128065; Live Preview</div>
+        <div id="preview"><em style="color:#999">Preview will appear here...</em></div>
+      </div>
+    </div>
+    <div class="options-bar">
+      <div class="opt-group"><label>Font:</label>
+        <select id="font-select2">
+          <option>Calibri</option><option>Arial</option><option>Times New Roman</option>
+        </select>
+      </div>
+      <div class="opt-group"><label>Page:</label>
+        <select id="page-size2"><option>A4</option><option>Letter</option></select>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="convertEditorToDOCX()">&#128195; Download DOCX</button>
+      <button class="btn btn-danger" onclick="convertEditorToPDF()">&#128213; Download PDF</button>
+      <button class="btn btn-secondary" onclick="loadSample()">&#128203; Load Sample</button>
+    </div>
+    <div class="progress-wrap" id="progress-wrap2">
+      <div class="progress-bar-bg"><div class="progress-bar" id="progress-bar2"></div></div>
+      <div class="progress-label" id="progress-label2">Processing...</div>
+    </div>
+  </div>
+</main>
+
+<div id="pdf-render" style="position:fixed;left:-9999px;top:0;width:794px;padding:48px;background:#fff;font-family:'Segoe UI',sans-serif;font-size:13px;line-height:1.8;color:#1a1a1a;"></div>
+<div id="toast"></div>
+
+<footer>
+  Built with &#9825; by <a href="https://github.com/sssskyds" target="_blank">Ajeet Kumar Sharma</a>
+  &nbsp;&bull;&nbsp; Powered by marked.js, jsPDF, docx.js
+  &nbsp;&bull;&nbsp; <a href="https://github.com/sssskyds/md-converter" target="_blank">View on GitHub</a>
+</footer>
+
+<script>
+  let mdContent = '';
+
+  function switchTab(name) {
+    document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', ['upload','editor'][i] === name));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+  }
+
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); const f = e.dataTransfer.files[0]; if(f) readFile(f); });
+  document.getElementById('file-input').addEventListener('change', e => { if(e.target.files[0]) readFile(e.target.files[0]); });
+
+  function readFile(file) {
+    const r = new FileReader();
+    r.onload = ev => {
+      mdContent = ev.target.result;
+      document.getElementById('file-name-display').textContent = '\u2705 Loaded: ' + file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
+      showToast('File loaded: ' + file.name);
+    };
+    r.readAsText(file);
+  }
+
+  function updatePreview() {
+    const src = document.getElementById('md-input').value;
+    document.getElementById('preview').innerHTML = src ? marked.parse(src) : '<em style="color:#999">Preview will appear here...</em>';
+  }
+
+  function loadSample() {
+    document.getElementById('md-input').value = `# Sample Document\n\nThis is **bold** and *italic* text.\n\n## Features\n\n- Heading support\n- **Bold** and *italic*\n- \`inline code\`\n\n## Code Block\n\n\`\`\`javascript\nfunction greet(name) {\n  return \`Hello, \${name}!\`;\n}\n\`\`\`\n\n## Table\n\n| Feature | Status |\n|---------|--------|\n| DOCX Export | \u2714 |\n| PDF Export | \u2714 |\n| Live Preview | \u2714 |\n\n> Simplicity is the soul of efficiency.\n\nVisit [GitHub](https://github.com/sssskyds/md-converter) for source code.`;
+    updatePreview();
+    showToast('Sample loaded!');
+  }
+
+  function clearAll() {
+    mdContent = '';
+    document.getElementById('file-name-display').textContent = '';
+    document.getElementById('file-input').value = '';
+    showToast('Cleared!');
+  }
+
+  function showProgress(id, label) {
+    const sfx = id === 1 ? '' : '2';
+    const wrap = document.getElementById('progress-wrap' + sfx);
+    const bar  = document.getElementById('progress-bar'  + sfx);
+    const lbl  = document.getElementById('progress-label'+ sfx);
+    wrap.classList.add('show'); bar.style.width = '0%'; lbl.textContent = label;
+    let w = 0;
+    const iv = setInterval(() => { w = Math.min(w+8, 90); bar.style.width = w+'%'; }, 80);
+    return { iv, bar, lbl, wrap };
+  }
+  function finishProgress(p) {
+    clearInterval(p.iv); p.bar.style.width='100%'; p.lbl.textContent='Done!';
+    setTimeout(() => p.wrap.classList.remove('show'), 1500);
+  }
+
+  function showToast(msg, isError=false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'show' + (isError ? ' error' : '');
+    setTimeout(() => t.className='', 3000);
+  }
+
+  /* ---- DOCX ---- */
+  function parseMDtoDOCX(text) {
+    const {Paragraph,TextRun,HeadingLevel,Table,TableRow,TableCell,WidthType,BorderStyle} = docx;
+    const lines = text.split('\n'); const children = []; let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^#{1,6}\s/.test(line)) {
+        const lvl = line.match(/^(#+)/)[1].length;
+        const txt = line.replace(/^#+\s+/,'');
+        const hMap=[HeadingLevel.HEADING_1,HeadingLevel.HEADING_2,HeadingLevel.HEADING_3,HeadingLevel.HEADING_4,HeadingLevel.HEADING_5,HeadingLevel.HEADING_6];
+        children.push(new Paragraph({text:txt,heading:hMap[lvl-1]})); i++; continue;
+      }
+      if (/^(---|-{3,}|\*{3,})$/.test(line.trim())) {
+        children.push(new Paragraph({border:{bottom:{color:'999999',space:1,style:BorderStyle.SINGLE,size:6}}})); i++; continue;
+      }
+      if (line.startsWith('> ')) {
+        children.push(new Paragraph({children:[new TextRun({text:line.slice(2),italics:true,color:'555555'})],indent:{left:720},border:{left:{color:'6c63ff',space:1,style:BorderStyle.SINGLE,size:12}}})); i++; continue;
+      }
+      if (/^[\-\*]\s/.test(line)) {
+        children.push(new Paragraph({text:line.replace(/^[\-\*]\s+/,''),bullet:{level:0}})); i++; continue;
+      }
+      if (/^\d+\.\s/.test(line)) {
+        children.push(new Paragraph({text:line.replace(/^\d+\.\s+/,''),numbering:{reference:'default-numbering',level:0}})); i++; continue;
+      }
+      if (line.startsWith('```')) {
+        i++; let code='';
+        while(i<lines.length && !lines[i].startsWith('```')){code+=lines[i]+'\n';i++;}
+        children.push(new Paragraph({children:[new TextRun({text:code.trimEnd(),font:'Courier New',size:18,color:'333333'})],shading:{fill:'F4F4F8'},spacing:{before:120,after:120}}));
+        i++; continue;
+      }
+      if (line.includes('|') && i+1<lines.length && /^[\s|:\-]+$/.test(lines[i+1])) {
+        const headers=line.split('|').map(c=>c.trim()).filter(Boolean); i+=2;
+        const rows=[new TableRow({children:headers.map(h=>new TableCell({children:[new Paragraph({children:[new TextRun({text:h,bold:true})]})],shading:{fill:'F4F4F8'},width:{size:Math.floor(9000/headers.length),type:WidthType.DXA}}))})];
+        while(i<lines.length&&lines[i].includes('|')){
+          const cells=lines[i].split('|').map(c=>c.trim()).filter(Boolean);
+          rows.push(new TableRow({children:cells.map(c=>new TableCell({children:[new Paragraph({text:c})]}))})); i++;
+        }
+        children.push(new Table({rows,width:{size:9000,type:WidthType.DXA}})); continue;
+      }
+      if (line.trim()===''){children.push(new Paragraph(''));i++;continue;}
+      children.push(new Paragraph({children:parseInline(line)})); i++;
+    }
+    return children;
+  }
+
+  function parseInline(text) {
+    const {TextRun}=docx; const runs=[]; const re=/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__|_[^_]+_)/g;
+    let last=0,m;
+    while((m=re.exec(text))!==null){
+      if(m.index>last) runs.push(new TextRun({text:text.slice(last,m.index)}));
+      const raw=m[0];
+      if(raw.startsWith('**')||raw.startsWith('__')) runs.push(new TextRun({text:raw.slice(2,-2),bold:true}));
+      else if(raw.startsWith('`')) runs.push(new TextRun({text:raw.slice(1,-1),font:'Courier New',color:'333333'}));
+      else runs.push(new TextRun({text:raw.slice(1,-1),italics:true}));
+      last=m.index+raw.length;
+    }
+    if(last<text.length) runs.push(new TextRun({text:text.slice(last)}));
+    return runs.length?runs:[new TextRun({text})];
+  }
+
+  async function generateDOCX(text,fontName){
+    const{Document,Packer}=docx;
+    const children=parseMDtoDOCX(text);
+    const doc=new Document({
+      numbering:{config:[{reference:'default-numbering',levels:[{level:0,format:'decimal',text:'%1.',alignment:'start'}]}]},
+      sections:[{properties:{},children}],
+      styles:{default:{document:{run:{font:fontName,size:24}}}}
+    });
+    return await Packer.toBlob(doc);
+  }
+
+  async function convertToDOCX(){
+    if(!mdContent){showToast('Please load a file first!',true);return;}
+    const p=showProgress(1,'Generating DOCX...');
+    try{const blob=await generateDOCX(mdContent,document.getElementById('font-select').value);downloadBlob(blob,'converted.docx');finishProgress(p);showToast('\u2705 DOCX downloaded!');}
+    catch(e){finishProgress(p);showToast('Error: '+e.message,true);}
+  }
+
+  async function convertEditorToDOCX(){
+    const text=document.getElementById('md-input').value;
+    if(!text.trim()){showToast('Please type some Markdown first!',true);return;}
+    const p=showProgress(2,'Generating DOCX...');
+    try{const blob=await generateDOCX(text,document.getElementById('font-select2').value);downloadBlob(blob,'document.docx');finishProgress(p);showToast('\u2705 DOCX downloaded!');}
+    catch(e){finishProgress(p);showToast('Error: '+e.message,true);}
+  }
+
+  /* ---- PDF ---- */
+  async function generatePDF(text,theme){
+    const{jsPDF}=window.jspdf;
+    const render=document.getElementById('pdf-render');
+    render.style.background=theme==='dark'?'#0f1117':'#fff';
+    render.style.color=theme==='dark'?'#e2e8f0':'#1a1a1a';
+    render.innerHTML=marked.parse(text);
+    const canvas=await html2canvas(render,{scale:1.8,useCORS:true});
+    const imgData=canvas.toDataURL('image/jpeg',0.95);
+    const pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    const pW=pdf.internal.pageSize.getWidth();
+    const pH=pdf.internal.pageSize.getHeight();
+    const ratio=pW/(canvas.width*0.264583);
+    const scaledH=canvas.height*0.264583*ratio;
+    let yOff=0,remaining=scaledH;
+    while(remaining>0){
+      const chunk=Math.min(pH-20,remaining);
+      const srcY=yOff/ratio/0.264583;
+      const srcH=chunk/ratio/0.264583;
+      const tc=document.createElement('canvas');
+      tc.width=canvas.width;tc.height=srcH;
+      tc.getContext('2d').drawImage(canvas,0,srcY,canvas.width,srcH,0,0,canvas.width,srcH);
+      if(yOff>0) pdf.addPage();
+      pdf.addImage(tc.toDataURL('image/jpeg',0.95),'JPEG',0,10,pW,chunk);
+      yOff+=chunk;remaining-=chunk;
+    }
+    render.innerHTML='';
+    return pdf;
+  }
+
+  async function convertToPDF(){
+    if(!mdContent){showToast('Please load a file first!',true);return;}
+    const p=showProgress(1,'Rendering PDF...');
+    try{const pdf=await generatePDF(mdContent,document.getElementById('pdf-theme').value);pdf.save('converted.pdf');finishProgress(p);showToast('\u2705 PDF downloaded!');}
+    catch(e){finishProgress(p);showToast('Error: '+e.message,true);}
+  }
+
+  async function convertEditorToPDF(){
+    const text=document.getElementById('md-input').value;
+    if(!text.trim()){showToast('Please type some Markdown first!',true);return;}
+    const p=showProgress(2,'Rendering PDF...');
+    try{const pdf=await generatePDF(text,'light');pdf.save('document.pdf');finishProgress(p);showToast('\u2705 PDF downloaded!');}
+    catch(e){finishProgress(p);showToast('Error: '+e.message,true);}
+  }
+
+  function downloadBlob(blob,filename){
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=filename;
+    document.body.appendChild(a);a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+</script>
+</body>
+</html>
