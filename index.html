@@ -16,6 +16,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
     :root,[data-theme="light"]{
       --bg:#f7f6f2;--surface:#f9f8f5;--surface-2:#fbfbf9;
@@ -497,28 +498,19 @@ marked.setOptions({breaks:true,gfm:true});
 let mdContent="";
 
 /* ── Colour schemes ── */
-/* auto: each heading level (h1..h6) gets its own distinct colour */
 const SCHEMES={
   auto:{
-    h1:[1,105,111],   /* teal */
-    h2:[0,70,140],    /* blue */
-    h3:[100,50,160],  /* purple */
-    h4:[180,60,10],   /* warm orange */
-    h5:[67,122,34],   /* green */
-    h6:[140,40,80],   /* rose */
-    link:[1,105,111],
-    code:[51,122,183],
-    /* per-level array used directly in heading rendering */
+    h1:[1,105,111],h2:[0,70,140],h3:[100,50,160],h4:[180,60,10],h5:[67,122,34],h6:[140,40,80],
+    link:[1,105,111],code:[51,122,183],
     levels:[[1,105,111],[0,70,140],[100,50,160],[180,60,10],[67,122,34],[140,40,80]]
   },
-  teal:  {h1:[1,105,111],  h2:[12,78,84],   h3:[30,90,95],  h4:[30,90,95],  h5:[30,90,95],  h6:[30,90,95],  link:[1,105,111],  code:[51,122,183], levels:null},
-  blue:  {h1:[0,70,140],   h2:[0,100,180],  h3:[30,110,190],h4:[30,110,190],h5:[30,110,190],h6:[30,110,190],link:[0,100,180],  code:[51,122,183], levels:null},
-  purple:{h1:[100,50,160], h2:[120,60,180], h3:[140,70,190],h4:[140,70,190],h5:[140,70,190],h6:[140,70,190],link:[100,50,160], code:[130,70,180], levels:null},
-  warm:  {h1:[180,60,10],  h2:[200,80,20],  h3:[210,100,30],h4:[210,100,30],h5:[210,100,30],h6:[210,100,30],link:[180,60,10],  code:[160,50,10],  levels:null},
-  minimal:{h1:[30,30,30],  h2:[50,50,50],   h3:[70,70,70],  h4:[70,70,70],  h5:[70,70,70],  h6:[70,70,70],  link:[80,80,80],   code:[80,80,80],   levels:null}
+  teal:  {h1:[1,105,111],h2:[12,78,84],  h3:[30,90,95], h4:[30,90,95], h5:[30,90,95], h6:[30,90,95], link:[1,105,111], code:[51,122,183],levels:null},
+  blue:  {h1:[0,70,140], h2:[0,100,180], h3:[30,110,190],h4:[30,110,190],h5:[30,110,190],h6:[30,110,190],link:[0,100,180],code:[51,122,183],levels:null},
+  purple:{h1:[100,50,160],h2:[120,60,180],h3:[140,70,190],h4:[140,70,190],h5:[140,70,190],h6:[140,70,190],link:[100,50,160],code:[130,70,180],levels:null},
+  warm:  {h1:[180,60,10],h2:[200,80,20], h3:[210,100,30],h4:[210,100,30],h5:[210,100,30],h6:[210,100,30],link:[180,60,10],code:[160,50,10],levels:null},
+  minimal:{h1:[30,30,30],h2:[50,50,50], h3:[70,70,70], h4:[70,70,70], h5:[70,70,70], h6:[70,70,70], link:[80,80,80], code:[80,80,80],levels:null}
 };
 
-/* Returns the colour array for a heading level (1-based) */
 function hColour(scheme,lvl){
   if(scheme.levels)return scheme.levels[Math.min(lvl,6)-1];
   const map=[scheme.h1,scheme.h2,scheme.h3,scheme.h4,scheme.h5,scheme.h6];
@@ -629,6 +621,7 @@ This is **bold** and *italic* text with some \`inline code\`.
 - Ordered and unordered lists
 - Nested blockquotes
 - Horizontal rules
+- ~~Strikethrough~~ text
 
 ### Sub-section Example
 
@@ -644,6 +637,13 @@ Content under a fourth-level heading.
 2. Second item with **bold** text
 3. Third item with a [link](https://github.com)
 
+## Nested Lists
+
+- Top level item
+  - Nested item A
+  - Nested item B
+- Another top level
+
 ## Nested Blockquote
 
 > This is a top-level blockquote.
@@ -658,6 +658,17 @@ function greet(name) {
 console.log(greet("World"));
 \`\`\`
 
+## Mermaid Diagram
+
+\`\`\`mermaid
+graph TD
+  A[Start] --> B{Decision}
+  B -->|Yes| C[Do it]
+  B -->|No| D[Skip]
+  C --> E[End]
+  D --> E
+\`\`\`
+
 ## Table
 
 | Feature | DOCX | PDF |
@@ -666,6 +677,7 @@ console.log(greet("World"));
 | Code blocks | ✔ | ✔ |
 | Tables | ✔ | ✔ |
 | Bold/Italic | ✔ | ✔ |
+| Mermaid | ✔ | ✔ |
 
 > "Simplicity is the soul of efficiency." — Austin Freeman
 
@@ -718,451 +730,384 @@ function showToast(msg,isError=false,isSuccess=false){
   t._timer=setTimeout(()=>{t.className="";},3200);
 }
 
-/* ═══════════════════════════════════════════════
-   DOCX GENERATION
-   FIX: parseInlineDOCX now accepts headingColor param.
-   All TextRun instances in a heading are built with the
-   correct colour in a single pass — no post-processing
-   needed. This avoids the r.options=undefined bug in
-   docx@8.5 where TextRun does not expose .options.
-═══════════════════════════════════════════════ */
+/* ═══ MERMAID INIT ═══ */
+if(typeof mermaid!=="undefined"){
+  mermaid.initialize({startOnLoad:false,theme:'neutral',securityLevel:'loose'});
+}
+async function renderMermaidSVG(code){
+  const id='mmd-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);
+  const{svg}=await mermaid.render(id,code.trim());
+  return svg;
+}
+
+/* ═══ DOCX HELPERS ═══ */
 function getDocx(){
   if(typeof window.docx!=="undefined")return window.docx;
-  throw new Error("docx library not loaded yet. Please wait a moment and try again.");
+  throw new Error("docx library not loaded yet.");
 }
-
 function ensureNumbering(){
-  return {
-    config:[{
-      reference:"ol-numbering",
-      levels:[{
-        level:0,
-        format:"decimal",
-        text:"%1.",
-        alignment:"start",
-        style:{paragraph:{indent:{left:720,hanging:360}}}
-      }]
-    }]
-  };
+  const levels=Array.from({length:9},(_,i)=>({level:i,format:"decimal",text:"%"+(i+1)+".",alignment:"start",style:{paragraph:{indent:{left:720+(i*360),hanging:360}}}}));
+  const ulLevels=Array.from({length:9},(_,i)=>({level:i,format:"bullet",text:i%3===0?"•":i%3===1?"◦":"▪",alignment:"start",style:{paragraph:{indent:{left:720+(i*360),hanging:360}}}}));
+  return{config:[{reference:"ol-numbering",levels},{reference:"ul-numbering",levels:ulLevels}]};
 }
 
-function parseMDtoDOCX(text,scheme){
+/* ═══ DOCX GENERATION ═══ */
+async function parseMDtoDOCX(text,scheme){
   const D=getDocx();
-  const{Paragraph,TextRun,HeadingLevel,Table,TableRow,TableCell,
-        WidthType,BorderStyle,ExternalHyperlink,ShadingType}=D;
-
-  const hMap=[HeadingLevel.HEADING_1,HeadingLevel.HEADING_2,HeadingLevel.HEADING_3,
-              HeadingLevel.HEADING_4,HeadingLevel.HEADING_5,HeadingLevel.HEADING_6];
-
+  const{Paragraph,TextRun,HeadingLevel,Table,TableRow,TableCell,WidthType,BorderStyle,ExternalHyperlink,ShadingType,ImageRun}=D;
+  const hMap=[HeadingLevel.HEADING_1,HeadingLevel.HEADING_2,HeadingLevel.HEADING_3,HeadingLevel.HEADING_4,HeadingLevel.HEADING_5,HeadingLevel.HEADING_6];
   const lines=text.split("\n");const children=[];let i=0;
   while(i<lines.length){
     const line=lines[i];
-
-    /* ── Headings ──
-       FIX: Pass headingColor directly into parseInlineDOCX so every
-       TextRun is built with the right colour in one pass.
-       No post-processing of r.options (which is undefined in docx@8.5). */
+    /* Heading */
     if(/^#{1,6}\s/.test(line)){
       const lvl=line.match(/^(#+)/)[1].length;
       const txt=line.replace(/^#+\s+/,"");
       const hc=rgbHex(...hColour(scheme,lvl));
-      /* headingColor passed — parseInlineDOCX applies it to all plain TextRun segments */
-      const runs=parseInlineDOCX(txt,D,scheme,hc);
-      children.push(new Paragraph({children:runs,heading:hMap[Math.min(lvl,6)-1]}));
+      children.push(new Paragraph({children:parseInlineDOCX(txt,D,scheme,hc),heading:hMap[Math.min(lvl,6)-1]}));
       i++;continue;
     }
-
-    /* ── HR ── */
-    if(/^(---|-{3,}|\*{3,}|_{3,})$/.test(line.trim())){
+    /* HR */
+    if(/^(---+|\*{3,}|_{3,})$/.test(line.trim())){
       children.push(new Paragraph({border:{bottom:{color:"AAAAAA",space:1,style:BorderStyle.SINGLE,size:6}}}));
       i++;continue;
     }
-
-    /* ── Blockquote ── */
-    if(/^>+\s?/.test(line)){
-      const depth=(line.match(/^(>+)/)||[,""])[1].length;
-      const txt=line.replace(/^>+\s?/,"");
-      const qColor=rgbHex(...hColour(scheme,2));
-      children.push(new Paragraph({
-        children:[new TextRun({text:txt,italics:true,color:"666666"})],
-        indent:{left:depth*360},
-        border:{left:{color:qColor,space:1,style:BorderStyle.SINGLE,size:12}},
-        spacing:{before:60,after:60}
-      }));
+    /* Mermaid */
+    if(/^```mermaid/.test(line)){
+      i++;let mmdCode="";
+      while(i<lines.length&&!lines[i].startsWith("```")){mmdCode+=lines[i]+"\n";i++;}
+      try{
+        const svg=await renderMermaidSVG(mmdCode);
+        const svgBlob=new Blob([svg],{type:"image/svg+xml"});
+        const url=URL.createObjectURL(svgBlob);
+        const arrBuf=await fetch(url).then(r=>r.arrayBuffer());
+        URL.revokeObjectURL(url);
+        const vb=(svg.match(/viewBox="([^"]+)"/))||[];
+        let dw=500,dh=300;
+        if(vb[1]){const p=vb[1].split(/\s+/);dw=Math.min(500,parseInt(p[2])||500);dh=Math.round(dw*(parseInt(p[3])||300)/(parseInt(p[2])||500));}
+        children.push(new Paragraph({children:[new ImageRun({data:arrBuf,transformation:{width:dw,height:dh},type:"svg"})],spacing:{before:160,after:160}}));
+      }catch(e){
+        children.push(new Paragraph({children:[new TextRun({text:"[Mermaid: "+e.message+"]",color:"999999",italics:true})]}));
+      }
       i++;continue;
     }
-
-    /* ── Bullet ── */
-    if(/^[-\*\+]\s/.test(line)){
-      children.push(new Paragraph({children:parseInlineDOCX(line.replace(/^[-\*\+]\s+/,""),D,scheme),bullet:{level:0}}));
-      i++;continue;
-    }
-
-    /* ── Ordered list ── */
-    if(/^\d+\.\s/.test(line)){
-      children.push(new Paragraph({
-        children:parseInlineDOCX(line.replace(/^\d+\.\s+/,""),D,scheme),
-        numbering:{reference:"ol-numbering",level:0}
-      }));
-      i++;continue;
-    }
-
-    /* ── Code block ── */
+    /* Fenced code block */
     if(line.startsWith("```")){
       i++;let code="";
       while(i<lines.length&&!lines[i].startsWith("```")){code+=lines[i]+"\n";i++;}
-      children.push(new Paragraph({
-        children:[new TextRun({text:code.trimEnd(),font:"Courier New",size:18,color:"444444"})],
-        shading:{type:ShadingType.SOLID,fill:"F4F4F8",color:"F4F4F8"},
-        spacing:{before:120,after:120},indent:{left:360,right:360}
-      }));i++;continue;
+      children.push(new Paragraph({children:[new TextRun({text:code.trimEnd(),font:"Courier New",size:18,color:"444444"})],shading:{type:ShadingType.SOLID,fill:"F4F4F8",color:"F4F4F8"},spacing:{before:120,after:120},indent:{left:360,right:360}}));
+      i++;continue;
     }
-
-    /* ── Table ── */
+    /* Blockquote — accumulate consecutive lines */
+    if(/^>+\s?/.test(line)){
+      let bqLines=[];
+      while(i<lines.length&&/^>+\s?/.test(lines[i])){
+        const depth=(lines[i].match(/^(>+)/)||[,""])[1].length;
+        const txt=lines[i].replace(/^>+\s?/,"");
+        bqLines.push({depth,txt});i++;
+      }
+      const qColor=rgbHex(...hColour(scheme,2));
+      for(const{depth,txt}of bqLines){
+        children.push(new Paragraph({children:[new TextRun({text:txt,italics:true,color:"666666"})],indent:{left:depth*360},border:{left:{color:qColor,space:1,style:BorderStyle.SINGLE,size:12}},spacing:{before:40,after:40}}));
+      }
+      continue;
+    }
+    /* Nested/flat bullet */
+    const bulletMatch=line.match(/^(\s*)[-*+] (.*)/);
+    if(bulletMatch){
+      const indent=Math.floor(bulletMatch[1].length/2);
+      children.push(new Paragraph({children:parseInlineDOCX(bulletMatch[2],D,scheme),numbering:{reference:"ul-numbering",level:Math.min(indent,8)}}));
+      i++;continue;
+    }
+    /* Nested/flat ordered list */
+    const olMatch=line.match(/^(\s*)\d+\.\s(.*)/);
+    if(olMatch){
+      const indent=Math.floor(olMatch[1].length/2);
+      children.push(new Paragraph({children:parseInlineDOCX(olMatch[2],D,scheme),numbering:{reference:"ol-numbering",level:Math.min(indent,8)}}));
+      i++;continue;
+    }
+    /* Table */
     if(line.includes("|")&&i+1<lines.length&&/^[\s|:\-]+$/.test(lines[i+1])){
       const headers=line.split("|").map(c=>c.trim()).filter(Boolean);i+=2;
       const colW=Math.floor(9000/headers.length);
-      const thFill=rgbHex(Math.min(hColour(scheme,1)[0]+200,240),Math.min(hColour(scheme,1)[1]+200,240),Math.min(hColour(scheme,1)[2]+200,240));
-      const rows=[new TableRow({children:headers.map(h=>new TableCell({
-        children:[new Paragraph({children:[new TextRun({text:h,bold:true,color:rgbHex(...hColour(scheme,1))})]})],
-        shading:{type:ShadingType.SOLID,fill:thFill,color:thFill},
-        width:{size:colW,type:WidthType.DXA}
-      }))})];
-      while(i<lines.length&&lines[i].includes("|")){
+      const h1rgb=hColour(scheme,1);
+      const thFill=rgbHex(Math.min(h1rgb[0]+200,240),Math.min(h1rgb[1]+200,240),Math.min(h1rgb[2]+200,240));
+      const tableRows=[new TableRow({children:headers.map(h=>new TableCell({children:[new Paragraph({children:[new TextRun({text:h,bold:true,color:rgbHex(...h1rgb)})]})],shading:{type:ShadingType.SOLID,fill:thFill,color:thFill},width:{size:colW,type:WidthType.DXA},margins:{top:60,bottom:60,left:80,right:80}}))})];
+      while(i<lines.length&&lines[i].trim().startsWith("|")){
         const cells=lines[i].split("|").map(c=>c.trim()).filter(Boolean);
-        rows.push(new TableRow({children:cells.map(c=>new TableCell({children:[new Paragraph({children:parseInlineDOCX(c,D,scheme)})]}))}));
+        tableRows.push(new TableRow({children:cells.map(c=>new TableCell({children:[new Paragraph({children:parseInlineDOCX(c,D,scheme)})],margins:{top:60,bottom:60,left:80,right:80}}))}));
         i++;
       }
-      children.push(new Table({rows,width:{size:9000,type:WidthType.DXA}}));
+      children.push(new Table({rows:tableRows,width:{size:9000,type:WidthType.DXA}}));
       continue;
     }
-
-    /* ── Empty line ── */
+    /* Image — note only */
+    if(/^!\[/.test(line)){
+      const alt=(line.match(/^!\[([^\]]*)\]/)||[])[1]||"image";
+      children.push(new Paragraph({children:[new TextRun({text:"[Image: "+alt+"]",color:"999999",italics:true})]}));
+      i++;continue;
+    }
+    /* HTML tags — strip */
+    if(/^\s*<[^>]+>/.test(line)){
+      const stripped=line.replace(/<[^>]+>/g,"").trim();
+      if(stripped)children.push(new Paragraph({children:parseInlineDOCX(stripped,D,scheme),spacing:{before:60,after:60}}));
+      i++;continue;
+    }
+    /* Empty */
     if(line.trim()===""){children.push(new Paragraph(""));i++;continue;}
-
-    /* ── Normal paragraph ── */
+    /* Paragraph */
     children.push(new Paragraph({children:parseInlineDOCX(line,D,scheme),spacing:{before:60,after:60}}));
     i++;
   }
   return children;
 }
 
-/*
- * parseInlineDOCX — inline Markdown parser for DOCX output.
- *
- * headingColor (optional hex string, e.g. "01696F"):
- *   When provided, all plain-text TextRun segments in this call will
- *   use this colour and bold=true (i.e. heading context).
- *   Bold/italic tokens also respect the heading colour for consistency.
- *   This is the FIX for the heading-omission bug: previously the
- *   function returned bare TextRun objects and the caller tried to
- *   re-create them via r.options (undefined in docx@8.5), silently
- *   dropping all text content.
- */
 function parseInlineDOCX(text,D,scheme,headingColor){
-  const{TextRun,ExternalHyperlink}=D;const runs=[];
+  const{TextRun,ExternalHyperlink}=D;
+  const runs=[];
   const linkColor=rgbHex(...scheme.link);
   const codeColor=rgbHex(...scheme.code);
   const isHeading=!!headingColor;
-  const re=/(!?\[([^\]]*)\]\(([^)]+)\)|`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
+  const re=/(!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]*)\]\(([^)]+)\)|`[^`]+`|~~[^~]+~~|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
   let last=0,m;
   while((m=re.exec(text))!==null){
-    if(m.index>last){
-      const seg=text.slice(last,m.index);
-      runs.push(new TextRun(isHeading
-        ?{text:seg,bold:true,color:headingColor}
-        :{text:seg}));
-    }
+    if(m.index>last){const seg=text.slice(last,m.index);if(seg)runs.push(new TextRun(isHeading?{text:seg,bold:true,color:headingColor}:{text:seg}));}
     const raw=m[0];
-    if(raw.startsWith("***"))
-      runs.push(new TextRun({text:raw.slice(3,-3),bold:true,italics:true,color:isHeading?headingColor:undefined}));
-    else if(raw.startsWith("**")||raw.startsWith("__"))
-      runs.push(new TextRun({text:raw.slice(2,-2),bold:true,color:isHeading?headingColor:undefined}));
-    else if(raw.startsWith("`"))
-      runs.push(new TextRun({text:raw.slice(1,-1),font:"Courier New",color:codeColor,highlight:"lightGray"}));
-    else if(raw.startsWith("!["))
-      runs.push(new TextRun({text:"[image: "+m[2]+"]",italics:true,color:"888888"}));
-    else if(raw.startsWith("["))
-      runs.push(new ExternalHyperlink({children:[new TextRun({text:m[2],color:linkColor,underline:{type:"single"}})],link:m[3]}));
-    else
-      runs.push(new TextRun({text:raw.slice(1,-1),italics:true,color:isHeading?headingColor:undefined}));
+    if(raw.startsWith("![")){/* skip inline images */}
+    else if(raw.startsWith("[")){
+      const label=m[4];const url=m[5];
+      runs.push(new ExternalHyperlink({link:url,children:[new TextRun({text:label,color:linkColor,underline:{type:"single",color:linkColor}})]}));
+    }else if(raw.startsWith("***")){
+      runs.push(new TextRun({text:raw.slice(3,-3),bold:true,italics:true,...(isHeading?{color:headingColor}:{})}));
+    }else if(raw.startsWith("**")||raw.startsWith("__")){
+      runs.push(new TextRun({text:raw.slice(2,-2),bold:true,...(isHeading?{color:headingColor}:{})}));
+    }else if(raw.startsWith("~~")){
+      runs.push(new TextRun({text:raw.slice(2,-2),strike:true,...(isHeading?{bold:true,color:headingColor}:{})}));
+    }else if(raw.startsWith("`")){
+      runs.push(new TextRun({text:raw.slice(1,-1),font:"Courier New",size:18,color:codeColor,shading:{type:"solid",fill:"F0F0F4",color:"F0F0F4"}}));
+    }else{
+      runs.push(new TextRun({text:raw.slice(1,-1),italics:true,...(isHeading?{bold:true,color:headingColor}:{})}));
+    }
     last=m.index+raw.length;
   }
-  if(last<text.length)
-    runs.push(new TextRun(isHeading
-      ?{text:text.slice(last),bold:true,color:headingColor}
-      :{text:text.slice(last)}));
-  return runs.length?runs:[new TextRun({text})];
+  if(last<text.length){const seg=text.slice(last);if(seg)runs.push(new TextRun(isHeading?{text:seg,bold:true,color:headingColor}:{text:seg}));}
+  if(runs.length===0)runs.push(new TextRun({text:""}));
+  return runs;
 }
 
-async function generateDOCX(text,fontName,fontSize,pageFormat,schemeKey){
-  const D=getDocx();
-  const{Document,Packer,PageSize}=D;
+async function generateDOCX(text,pageFormat,schemeKey,fontName,fontSize){
+  const D=getDocx();const{Document,Packer,PageSize}=D;
   const scheme=SCHEMES[schemeKey]||SCHEMES.teal;
-  const children=parseMDtoDOCX(text,scheme);
+  const children=await parseMDtoDOCX(text,scheme);
   const sizeVal=pageFormat==="LETTER"?PageSize.LETTER:PageSize.A4;
-  const h1c=rgbHex(...hColour(scheme,1));
-  const h2c=rgbHex(...hColour(scheme,2));
-  const h3c=rgbHex(...hColour(scheme,3));
+  const h1c=rgbHex(...hColour(scheme,1));const h2c=rgbHex(...hColour(scheme,2));const h3c=rgbHex(...hColour(scheme,3));
   const doc=new Document({
     numbering:ensureNumbering(),
     sections:[{properties:{page:{size:{orientation:"portrait",type:sizeVal}}},children}],
     styles:{
       default:{document:{run:{font:fontName,size:parseInt(fontSize)}}},
       paragraphStyles:[
-        {id:"Heading1",name:"Heading 1",basedOn:"Normal",next:"Normal",
-          run:{bold:true,size:40,color:h1c,font:fontName},
-          paragraph:{spacing:{before:280,after:120}}},
-        {id:"Heading2",name:"Heading 2",basedOn:"Normal",next:"Normal",
-          run:{bold:true,size:32,color:h2c,font:fontName},
-          paragraph:{spacing:{before:220,after:100},border:{bottom:{color:"DDDDDD",space:1,style:"single",size:4}}}},
-        {id:"Heading3",name:"Heading 3",basedOn:"Normal",next:"Normal",
-          run:{bold:true,size:26,color:h3c,font:fontName},
-          paragraph:{spacing:{before:160,after:80}}},
+        {id:"Heading1",name:"Heading 1",basedOn:"Normal",next:"Normal",run:{bold:true,size:40,color:h1c,font:fontName},paragraph:{spacing:{before:280,after:120}}},
+        {id:"Heading2",name:"Heading 2",basedOn:"Normal",next:"Normal",run:{bold:true,size:32,color:h2c,font:fontName},paragraph:{spacing:{before:220,after:100},border:{bottom:{color:"DDDDDD",space:1,style:"single",size:4}}}},
+        {id:"Heading3",name:"Heading 3",basedOn:"Normal",next:"Normal",run:{bold:true,size:26,color:h3c,font:fontName},paragraph:{spacing:{before:160,after:80}}},
       ]
     }
   });
   return await Packer.toBlob(doc);
 }
 
-/* ═══════════════════════════════════════════════
-   PDF GENERATION
-   FIX: renderInlinePDF now accepts baseColor[] instead of
-   boolean boldBase. This ensures H2/H3 inline plain-text
-   segments use the correct level colour, not always H1.
-═══════════════════════════════════════════════ */
+/* ═══ PDF GENERATION ═══ */
 async function generatePDF(text,pageFormat,schemeKey){
   const{jsPDF}=window.jspdf;
   const scheme=SCHEMES[schemeKey]||SCHEMES.teal;
   const fmt=pageFormat==="LETTER"?"letter":"a4";
   const pdf=new jsPDF({orientation:"portrait",unit:"pt",format:fmt});
-
-  const PW=pdf.internal.pageSize.getWidth();
-  const PH=pdf.internal.pageSize.getHeight();
-  const ML=56,MR=56,MT=56,MB=56;
-  const TW=PW-ML-MR;
-  let y=MT;
-
-  function checkPage(needed){
-    if(y+needed>PH-MB){pdf.addPage();y=MT;}
-  }
-
+  const PW=pdf.internal.pageSize.getWidth();const PH=pdf.internal.pageSize.getHeight();
+  const ML=56,MR=56,MT=56,MB=56;const TW=PW-ML-MR;let y=MT;
+  function checkPage(n){if(y+n>PH-MB){pdf.addPage();y=MT;}}
   function setFont(style,size,rgb){
-    const[r,g,b]=rgb;
-    pdf.setTextColor(r,g,b);
-    if(style==="bold")       pdf.setFont("helvetica","bold");
+    const[r,g,b]=rgb;pdf.setTextColor(r,g,b);
+    if(style==="bold")pdf.setFont("helvetica","bold");
     else if(style==="italic")pdf.setFont("helvetica","italic");
-    else if(style==="mono")  pdf.setFont("courier","normal");
-    else                     pdf.setFont("helvetica","normal");
+    else if(style==="bolditalic")pdf.setFont("helvetica","bolditalic");
+    else if(style==="mono")pdf.setFont("courier","normal");
+    else pdf.setFont("helvetica","normal");
     pdf.setFontSize(size);
   }
-
   const lines=text.split("\n");let i=0;
-
   while(i<lines.length){
     const line=lines[i];
-
-    /* heading helper — DRY for H1-H6 */
     const hm=line.match(/^(#{1,6})\s+(.*)/);
     if(hm){
-      const lvl=hm[1].length;
-      const txt=hm[2];
-      const hRGB=hColour(scheme,lvl);
-      /* size/spacing by level */
-      const sz=[22,17,14,12,11,11][lvl-1];
-      const lh=[26,21,18,16,15,15][lvl-1];
-      const sp=[14,8,6,4,2,2][lvl-1];
-      checkPage(sz+sp+10);
-      pdf.setFont("helvetica","bold");pdf.setFontSize(sz);pdf.setTextColor(...hRGB);
+      const lvl=hm[1].length,txt=hm[2],hRGB=hColour(scheme,lvl);
+      const sz=[22,17,14,12,11,11][lvl-1],lh=[28,22,18,16,15,15][lvl-1],sp=[14,10,7,4,3,3][lvl-1];
+      checkPage(sz+sp+16);
       const wrapped=pdf.splitTextToSize(stripInlineMD(txt),TW);
-      /* FIX: pass hRGB as baseColor so plain segments get the heading's own colour */
+      pdf.setFont("helvetica","bold");pdf.setFontSize(sz);pdf.setTextColor(...hRGB);
       renderInlinePDF(pdf,wrapped[0]||"",ML,y,scheme,sz,hRGB);
-      for(let wi=1;wi<wrapped.length;wi++){
-        y+=lh;checkPage(lh);
-        pdf.setFont("helvetica","bold");pdf.setFontSize(sz);pdf.setTextColor(...hRGB);
-        pdf.text(wrapped[wi],ML,y);
-      }
-      y+=wrapped.length*lh+sp;
-      /* underline for H1 and H2 */
-      if(lvl<=2){
-        pdf.setDrawColor(lvl===1?hRGB[0]:220,lvl===1?hRGB[1]:220,lvl===1?hRGB[2]:220);
-        pdf.setLineWidth(lvl===1?1:.5);
-        pdf.line(ML,y,PW-MR,y);y+=8;
-      }
+      for(let wi=1;wi<wrapped.length;wi++){y+=lh;checkPage(lh);renderInlinePDF(pdf,wrapped[wi],ML,y,scheme,sz,hRGB);}
+      y+=lh+sp;
+      if(lvl<=2){pdf.setDrawColor(...(lvl===1?hRGB:[220,220,220]));pdf.setLineWidth(lvl===1?1:.5);pdf.line(ML,y-sp+2,PW-MR,y-sp+2);}
       i++;continue;
     }
-
-    /* ── HR ── */
-    if(/^(---|-{3,}|\*{3,}|_{3,})$/.test(line.trim())){
-      checkPage(16);
-      pdf.setDrawColor(180,180,180);pdf.setLineWidth(.5);
-      pdf.line(ML,y,PW-MR,y);y+=16;
+    if(/^(---+|\*{3,}|_{3,})$/.test(line.trim())){checkPage(16);pdf.setDrawColor(180,180,180);pdf.setLineWidth(.5);pdf.line(ML,y,PW-MR,y);y+=16;i++;continue;}
+    /* Mermaid PDF */
+    if(/^```mermaid/.test(line)){
+      i++;let mmdCode="";
+      while(i<lines.length&&!lines[i].startsWith("```")){mmdCode+=lines[i]+"\n";i++;}
+      try{
+        const svg=await renderMermaidSVG(mmdCode);
+        const imgData="data:image/svg+xml;base64,"+btoa(unescape(encodeURIComponent(svg)));
+        const vb=(svg.match(/viewBox="([^"]+)"/))||[];
+        let dw=TW,dh=200;
+        if(vb[1]){const p=vb[1].split(/\s+/);dh=Math.round(dw*(parseInt(p[3])||200)/(parseInt(p[2])||TW));}
+        dh=Math.min(dh,PH-y-MB-20);
+        checkPage(dh+20);pdf.addImage(imgData,"SVG",ML,y,dw,dh);y+=dh+12;
+      }catch(e){checkPage(16);setFont("italic",10,[160,160,160]);pdf.text("[Mermaid: "+e.message+"]",ML,y);y+=16;}
       i++;continue;
     }
-    /* ── Blockquote ── */
-    if(/^>+\s?/.test(line)){
-      const depth=(line.match(/^(>+)/)||[,""])[1].length;
-      const txt=line.replace(/^>+\s?/,"");
-      checkPage(20);
-      const leftX=ML+(depth-1)*12;
-      pdf.setFillColor(...hColour(scheme,1));
-      pdf.rect(leftX,y-11,3,14,"F");
-      setFont("italic",11,[100,100,100]);
-      const wrapped=pdf.splitTextToSize(txt,TW-20-(depth-1)*12);
-      pdf.text(wrapped,leftX+12,y);
-      y+=wrapped.length*16+8;
-      i++;continue;
-    }
-    /* ── Code block ── */
+    /* Code block PDF */
     if(line.startsWith("```")){
       i++;let codeLines=[];
       while(i<lines.length&&!lines[i].startsWith("```")){codeLines.push(lines[i]);i++;}
-      const codeText=codeLines.join("\n");
-      const lh=13;const pad=8;
-      const wrapped=pdf.splitTextToSize(codeText,TW-pad*2);
-      const blockH=wrapped.length*lh+pad*2;
+      const lhC=13,pad=8;
+      const wrapped=pdf.splitTextToSize(codeLines.join("\n"),TW-pad*2);
+      const blockH=wrapped.length*lhC+pad*2+4;
       checkPage(blockH+8);
       pdf.setFillColor(244,244,248);pdf.setDrawColor(210,210,215);pdf.setLineWidth(.5);
-      pdf.roundedRect(ML,y-10,TW,blockH,3,3,"FD");
+      pdf.roundedRect(ML,y-lhC,TW,blockH,3,3,"FD");
       setFont("mono",9,[60,60,60]);
-      pdf.text(wrapped,ML+pad,y+pad-2);
-      y+=blockH+10;
-      i++;continue;
+      wrapped.forEach((wl,wi)=>{pdf.text(wl,ML+pad,y+wi*lhC);});
+      y+=blockH+10;i++;continue;
     }
-    /* ── Table ── */
+    /* Blockquote PDF */
+    if(/^>+\s?/.test(line)){
+      let bqLines=[];
+      while(i<lines.length&&/^>+\s?/.test(lines[i])){
+        const depth=(lines[i].match(/^(>+)/)||[,""])[1].length;
+        bqLines.push({depth,txt:lines[i].replace(/^>+\s?/,"")});i++;
+      }
+      for(const{depth,txt}of bqLines){
+        checkPage(20);const lx=ML+(depth-1)*14;
+        pdf.setFillColor(...hColour(scheme,2));pdf.rect(lx,y-11,3,15,"F");
+        setFont("italic",10,[100,100,100]);
+        const w=pdf.splitTextToSize(txt,TW-20-(depth-1)*14);
+        pdf.text(w,lx+10,y);y+=w.length*15+4;
+      }
+      continue;
+    }
+    /* Bullet PDF */
+    const bm=line.match(/^(\s*)[-*+] (.*)/);
+    if(bm){
+      const indent=Math.floor(bm[1].length/2),txt=bm[2];
+      checkPage(16);const ix=ML+indent*14;
+      pdf.setFillColor(...hColour(scheme,2));pdf.circle(ix+3,y-4,2,"F");
+      setFont("normal",11,[40,40,40]);
+      const w=pdf.splitTextToSize(stripInlineMD(txt),TW-14-indent*14);
+      renderInlinePDF(pdf,w[0]||"",ix+10,y,scheme,11);
+      for(let wi=1;wi<w.length;wi++){y+=14;checkPage(14);renderInlinePDF(pdf,w[wi],ix+10,y,scheme,11);}
+      y+=16;i++;continue;
+    }
+    /* Ordered list PDF */
+    const om=line.match(/^(\s*)(\d+)\. (.*)/);
+    if(om){
+      const indent=Math.floor(om[1].length/2),num=om[2],txt=om[3];
+      checkPage(16);const ix=ML+indent*18;
+      setFont("bold",11,hColour(scheme,2));pdf.text(num+".",ix,y);
+      setFont("normal",11,[40,40,40]);
+      const w=pdf.splitTextToSize(stripInlineMD(txt),TW-20-indent*18);
+      renderInlinePDF(pdf,w[0]||"",ix+16,y,scheme,11);
+      for(let wi=1;wi<w.length;wi++){y+=14;checkPage(14);renderInlinePDF(pdf,w[wi],ix+16,y,scheme,11);}
+      y+=16;i++;continue;
+    }
+    /* Table PDF */
     if(line.includes("|")&&i+1<lines.length&&/^[\s|:\-]+$/.test(lines[i+1])){
       const headers=line.split("|").map(c=>c.trim()).filter(Boolean);i+=2;
       const rows=[headers];
-      while(i<lines.length&&lines[i].includes("|")){
-        rows.push(lines[i].split("|").map(c=>c.trim()).filter(Boolean));i++;
-      }
-      const colW=TW/headers.length;const rowH=18;
+      while(i<lines.length&&lines[i].trim().startsWith("|")){rows.push(lines[i].split("|").map(c=>c.trim()).filter(Boolean));i++;}
+      const colW=TW/headers.length,rowH=20,h1rgb=hColour(scheme,1);
       checkPage(rows.length*rowH+8);
-      const h1rgb=hColour(scheme,1);
       rows.forEach((row,ri)=>{
         row.forEach((cell,ci)=>{
-          const cx=ML+ci*colW;const cy=y+(ri*rowH);
-          if(ri===0){
-            pdf.setFillColor(...h1rgb.map(v=>Math.min(v+190,245)));
-            pdf.rect(cx,cy-12,colW,rowH,"F");
-            setFont("bold",9,h1rgb);
-          }else{
-            pdf.setDrawColor(220,220,220);pdf.setLineWidth(.3);
-            pdf.rect(cx,cy-12,colW,rowH,"S");
-            setFont("normal",9,[40,40,40]);
-          }
-          pdf.text(String(cell).slice(0,Math.floor(colW/6)),cx+4,cy-1);
+          const cx=ML+ci*colW,cy=y+(ri*rowH);
+          if(ri===0){pdf.setFillColor(...h1rgb.map(v=>Math.min(v+190,245)));pdf.rect(cx,cy-14,colW,rowH,"F");setFont("bold",9,h1rgb);}
+          else{if(ri%2===0){pdf.setFillColor(250,250,250);pdf.rect(cx,cy-14,colW,rowH,"F");}pdf.setDrawColor(210,210,210);pdf.setLineWidth(.3);pdf.rect(cx,cy-14,colW,rowH,"S");setFont("normal",9,[40,40,40]);}
+          pdf.text(pdf.splitTextToSize(String(cell),colW-8)[0]||"",cx+4,cy-1);
         });
       });
-      y+=rows.length*rowH+12;
-      continue;
+      y+=rows.length*rowH+12;continue;
     }
-    /* ── Bullet ── */
-    if(/^[-\*\+] /.test(line)){
-      const txt=line.replace(/^[-\*\+] /,"");
-      checkPage(16);
-      setFont("normal",11,[40,40,40]);
-      pdf.setFillColor(...hColour(scheme,2));
-      pdf.circle(ML+3,y-4,2,"F");
-      const wrapped=pdf.splitTextToSize(txt,TW-14);
-      renderInlinePDF(pdf,wrapped[0]||"",ML+10,y,scheme,11);
-      for(let wi=1;wi<wrapped.length;wi++){y+=14;checkPage(14);pdf.text(wrapped[wi],ML+10,y);}
-      y+=16;i++;continue;
+    /* Image note PDF */
+    if(/^!\[/.test(line)){checkPage(14);setFont("italic",10,[150,150,150]);pdf.text("[Image: "+((line.match(/^!\[([^\]]*)\]/)||[])[1]||"image")+"]",ML,y);y+=16;i++;continue;}
+    /* HTML strip PDF */
+    if(/^\s*<[^>]+>/.test(line)){
+      const s=line.replace(/<[^>]+>/g,"").trim();
+      if(s){setFont("normal",11,[30,30,30]);const w=pdf.splitTextToSize(s,TW);checkPage(w.length*15+4);w.forEach(wl=>{renderInlinePDF(pdf,wl,ML,y,scheme,11);y+=15;});y+=4;}
+      i++;continue;
     }
-    /* ── Numbered list ── */
-    if(/^\d+\. /.test(line)){
-      const num=line.match(/^(\d+)\./)[1];
-      const txt=line.replace(/^\d+\. /,"");
-      checkPage(16);
-      setFont("bold",11,hColour(scheme,2));
-      pdf.text(num+".",ML,y);
-      setFont("normal",11,[40,40,40]);
-      const wrapped=pdf.splitTextToSize(txt,TW-18);
-      renderInlinePDF(pdf,wrapped[0]||"",ML+16,y,scheme,11);
-      for(let wi=1;wi<wrapped.length;wi++){y+=14;checkPage(14);pdf.text(wrapped[wi],ML+16,y);}
-      y+=16;i++;continue;
-    }
-    /* ── Empty line ── */
     if(line.trim()===""){y+=8;i++;continue;}
-
-    /* ── Normal paragraph ── */
     setFont("normal",11,[30,30,30]);
     const wrapped=pdf.splitTextToSize(stripInlineMD(line),TW);
     checkPage(wrapped.length*15+4);
-    wrapped.forEach(wl=>{
-      renderInlinePDF(pdf,wl,ML,y,scheme,11);
-      y+=15;
-    });
+    wrapped.forEach(wl=>{renderInlinePDF(pdf,wl,ML,y,scheme,11);y+=15;});
     y+=4;i++;
   }
-
   return pdf;
 }
 
 function stripInlineMD(t){
-  return t.replace(/\*\*\*([^*]+)\*\*\*/g,"$1")
-           .replace(/\*\*([^*]+)\*\*/g,"$1")
-           .replace(/__([^_]+)__/g,"$1")
-           .replace(/\*([^*]+)\*/g,"$1")
-           .replace(/_([^_]+)_/g,"$1")
-           .replace(/`([^`]+)`/g,"$1")
-           .replace(/\[([^\]]+)\]\([^)]+\)/g,"$1");
+  return t.replace(/~~([^~]+)~~/g,"$1").replace(/\*\*\*([^*]+)\*\*\*/g,"$1").replace(/\*\*([^*]+)\*\*/g,"$1").replace(/__([^_]+)__/g,"$1").replace(/\*([^*]+)\*/g,"$1").replace(/_([^_]+)_/g,"$1").replace(/`([^`]+)`/g,"$1").replace(/!\[([^\]]*)\]\([^)]+\)/g,"$1").replace(/\[([^\]]+)\]\([^)]+\)/g,"$1").replace(/<[^>]+>/g,"");
 }
 
-/*
- * renderInlinePDF — inline Markdown renderer for PDF.
- *
- * baseColor (optional [r,g,b]):
- *   When provided, plain-text segments outside inline tokens
- *   render in this colour with bold styling (heading context).
- *   FIX: replaces the old boolean boldBase which always used
- *   scheme.h1, incorrectly colouring H2/H3 segments.
- */
 function renderInlinePDF(pdf,text,x,y,scheme,size,baseColor){
-  const re=/(\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`|\*([^*]+)\*|_([^_]+)_|\[([^\]]+)\]\(([^)]+)\))/g;
+  const re=/(\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|`([^`]+)`|\*([^*]+)\*|_([^_]+)_|\[([^\]]+)\]\(([^)]+)\))/g;
   let last=0,m,cx=x;
   while((m=re.exec(text))!==null){
     if(m.index>last){
-      const seg=text.slice(last,m.index);
-      if(baseColor){
-        pdf.setFont("helvetica","bold");pdf.setFontSize(size);pdf.setTextColor(...baseColor);
-      }else{
-        pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(30,30,30);
+      const seg=text.slice(last,m.index);if(seg){
+        if(baseColor){pdf.setFont("helvetica","bold");pdf.setFontSize(size);pdf.setTextColor(...baseColor);}
+        else{pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(30,30,30);}
+        pdf.text(seg,cx,y);cx+=pdf.getTextWidth(seg);
       }
-      pdf.text(seg,cx,y);
-      cx+=pdf.getTextWidth(seg);
     }
     const raw=m[0];
     if(raw.startsWith("***")){
-      pdf.setFont("helvetica","bolditalic");pdf.setFontSize(size);pdf.setTextColor(30,30,30);
-      const s=m[2];pdf.text(s,cx,y);cx+=pdf.getTextWidth(s);
+      const s=m[2],col=baseColor||[30,30,30];
+      pdf.setFont("helvetica","bolditalic");pdf.setFontSize(size);pdf.setTextColor(...col);
+      pdf.text(s,cx,y);cx+=pdf.getTextWidth(s);
     }else if(raw.startsWith("**")||raw.startsWith("__")){
-      pdf.setFont("helvetica","bold");pdf.setFontSize(size);pdf.setTextColor(30,30,30);
-      const s=m[3]||m[4];pdf.text(s,cx,y);cx+=pdf.getTextWidth(s);
-    }else if(raw.startsWith("`")){
-      pdf.setFont("courier","normal");pdf.setFontSize(size-1);pdf.setTextColor(...scheme.code);
-      const s=m[5];pdf.text(s,cx,y);cx+=pdf.getTextWidth(s);
-    }else if(raw.startsWith("[")){
-      pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(...scheme.link);
-      const s=m[8];pdf.text(s,cx,y);
-      const tw=pdf.getTextWidth(s);
-      pdf.setDrawColor(...scheme.link);pdf.setLineWidth(.4);
-      pdf.line(cx,y+1.5,cx+tw,y+1.5);
-      pdf.link(cx,y-size,tw,size+2,{url:m[9]});
+      const s=m[3]||m[4],col=baseColor||[30,30,30];
+      pdf.setFont("helvetica","bold");pdf.setFontSize(size);pdf.setTextColor(...col);
+      pdf.text(s,cx,y);cx+=pdf.getTextWidth(s);
+    }else if(raw.startsWith("~~")){
+      const s=m[5],col=baseColor||[100,100,100];
+      pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(...col);
+      pdf.text(s,cx,y);const tw=pdf.getTextWidth(s);
+      pdf.setDrawColor(...col);pdf.setLineWidth(.5);pdf.line(cx,y-size*0.35,cx+tw,y-size*0.35);
       cx+=tw;
+    }else if(raw.startsWith("`")){
+      const s=m[6];
+      pdf.setFont("courier","normal");pdf.setFontSize(size-1);pdf.setTextColor(...scheme.code);
+      pdf.text(s,cx,y);cx+=pdf.getTextWidth(s);
+    }else if(raw.startsWith("[")){
+      const s=m[9],url=m[10];
+      pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(...scheme.link);
+      pdf.text(s,cx,y);const tw=pdf.getTextWidth(s);
+      pdf.setDrawColor(...scheme.link);pdf.setLineWidth(.4);pdf.line(cx,y+1.5,cx+tw,y+1.5);
+      pdf.link(cx,y-size,tw,size+2,{url});cx+=tw;
     }else{
-      pdf.setFont("helvetica","italic");pdf.setFontSize(size);pdf.setTextColor(30,30,30);
-      const s=m[6]||m[7];pdf.text(s,cx,y);cx+=pdf.getTextWidth(s);
+      const s=m[7]||m[8],col=baseColor||[30,30,30];
+      pdf.setFont("helvetica","italic");pdf.setFontSize(size);pdf.setTextColor(...col);
+      pdf.text(s,cx,y);cx+=pdf.getTextWidth(s);
     }
     last=m.index+raw.length;
   }
   if(last<text.length){
-    if(baseColor){
-      pdf.setFont("helvetica","bold");pdf.setFontSize(size);pdf.setTextColor(...baseColor);
-    }else{
-      pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(30,30,30);
+    const seg=text.slice(last);if(seg){
+      if(baseColor){pdf.setFont("helvetica","bold");pdf.setFontSize(size);pdf.setTextColor(...baseColor);}
+      else{pdf.setFont("helvetica","normal");pdf.setFontSize(size);pdf.setTextColor(30,30,30);}
+      pdf.text(seg,cx,y);
     }
-    pdf.text(text.slice(last),cx,y);
   }
 }
 
@@ -1172,10 +1117,10 @@ async function convertToDOCX(){
   setBtnLoading("btn-docx",true);const p=showProgress("","Generating DOCX\u2026");
   try{
     const blob=await generateDOCX(mdContent,
-      document.getElementById("font-select").value,
-      document.getElementById("font-size-select").value,
       document.getElementById("page-size").value,
-      document.getElementById("colour-scheme").value);
+      document.getElementById("colour-scheme").value,
+      document.getElementById("font-select").value,
+      document.getElementById("font-size-select").value);
     downloadBlob(blob,"converted.docx");finishProgress(p);showToast("DOCX downloaded!",false,true);
   }catch(e){finishProgress(p);showToast("DOCX error: "+e.message,true);}
   finally{setBtnLoading("btn-docx",false);}
@@ -1187,10 +1132,10 @@ async function convertEditorToDOCX(){
   setBtnLoading("btn-docx2",true);const p=showProgress("2","Generating DOCX\u2026");
   try{
     const blob=await generateDOCX(text,
-      document.getElementById("font-select2").value,
-      document.getElementById("font-size-select2").value,
       document.getElementById("page-size2").value,
-      document.getElementById("colour-scheme2").value);
+      document.getElementById("colour-scheme2").value,
+      document.getElementById("font-select2").value,
+      document.getElementById("font-size-select2").value);
     downloadBlob(blob,"document.docx");finishProgress(p);showToast("DOCX downloaded!",false,true);
   }catch(e){finishProgress(p);showToast("DOCX error: "+e.message,true);}
   finally{setBtnLoading("btn-docx2",false);}
