@@ -233,7 +233,7 @@
     </div>
     <span class="site-title">MD<span>Converter</span></span>
     <div class="header-right">
-      <span class="badge">v2.1</span>
+      <span class="badge">v2.2</span>
       <button class="theme-toggle" data-theme-toggle aria-label="Switch to light mode">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -243,21 +243,21 @@
   </header>
 
   <div class="hero">
-    <h1>Markdown → DOCX &amp; PDF</h1>
+    <h1>Markdown &rarr; DOCX &amp; PDF</h1>
     <p>Convert your Markdown files to styled Word documents and PDFs — entirely in your browser. Nothing leaves your machine.</p>
     <div class="pills">
       <span class="pill"><span class="pill-dot"></span>100% browser-side</span>
       <span class="pill"><span class="pill-dot"></span>Mermaid diagrams</span>
       <span class="pill"><span class="pill-dot"></span>Tables &amp; code blocks</span>
       <span class="pill"><span class="pill-dot"></span>Nested lists</span>
-      <span class="pill"><span class="pill-dot"></span>~~Strikethrough~~</span>
+      <span class="pill"><span class="pill-dot"></span>Callout boxes</span>
     </div>
   </div>
 
   <main class="main" id="main-content">
     <div class="tab-bar" role="tablist">
-      <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="panel-upload" id="tab-upload" onclick="switchTab('upload')">📂 Upload File</button>
-      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-editor" id="tab-editor" onclick="switchTab('editor')">✏️ Editor</button>
+      <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="panel-upload" id="tab-upload" onclick="switchTab('upload')">Upload File</button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-editor" id="tab-editor" onclick="switchTab('editor')">Editor</button>
     </div>
 
     <!-- UPLOAD PANEL -->
@@ -275,7 +275,7 @@
           </svg>
         </div>
         <h3>Drop your Markdown file here</h3>
-        <p>or click to browse — <strong>.md · .markdown · .txt</strong></p>
+        <p>or click to browse — <strong>.md &middot; .markdown &middot; .txt</strong></p>
       </div>
       <input type="file" id="file-input" accept=".md,.markdown,.txt" onchange="handleFile(this.files[0])">
 
@@ -416,7 +416,7 @@
   </main>
 
   <footer>
-    <p>MDConverter — 100% browser-side · No data leaves your machine · <a href="https://github.com/sssskyds/md-converter" target="_blank" rel="noopener noreferrer">GitHub</a></p>
+    <p>MDConverter — 100% browser-side &middot; No data leaves your machine &middot; <a href="https://github.com/sssskyds/md-converter" target="_blank" rel="noopener noreferrer">GitHub</a></p>
   </footer>
 
   <div id="toast" role="status" aria-live="polite"></div>
@@ -441,6 +441,55 @@
   };
   function hColour(scheme,lvl){const k=['h1','h2','h3','h4','h5','h6'][Math.min(lvl,6)-1];return scheme[k]||scheme.h1;}
   function rgbHex(r,g,b){return((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1).toUpperCase();}
+
+  /* ═══ STRIP EMOJI & NON-LATIN for PDF ═══ */
+  /* jsPDF built-in fonts (helvetica/courier) only cover Latin-1.
+     Emoji and non-Latin chars render as garbage (e.g. 🤖 → "Ø>Ý").
+     We replace them with a safe ASCII description or remove them. */
+  function stripUnsafeChars(str){
+    return str
+      /* Remove emoji and symbols (U+1F000–U+1FFFF, U+2600–U+27BF etc.) */
+      .replace(/[\u{1F000}-\u{1FFFF}]/gu,'')
+      .replace(/[\u2600-\u27BF]/gu,'')
+      .replace(/[\u2B00-\u2BFF]/gu,'')
+      .replace(/[\uFE00-\uFE0F]/gu,'')   /* variation selectors */
+      /* Smart quotes → straight quotes */
+      .replace(/[\u2018\u2019]/g,"'")
+      .replace(/[\u201C\u201D]/g,'"')
+      /* En/em dashes */
+      .replace(/\u2013/g,'-').replace(/\u2014/g,'--')
+      /* Ellipsis */
+      .replace(/\u2026/g,'...')
+      /* Bullet variants */
+      .replace(/[\u2022\u2023\u25E6\u2043]/g,'*')
+      /* Arrows: → ← ↑ ↓ */
+      .replace(/\u2192/g,'->').replace(/\u2190/g,'<-')
+      .replace(/\u2191/g,'^').replace(/\u2193/g,'v')
+      /* Checkmark / cross */
+      .replace(/\u2713|\u2714|\u2705/g,'[x]')
+      .replace(/\u2717|\u2718|\u274C/g,'[ ]')
+      /* Strip any remaining non-Latin-1 */
+      .replace(/[^\x00-\xFF]/g,'?');
+  }
+
+  /* ═══ CALLOUT TYPE DETECTION ═══ */
+  /* GitHub-flavored callouts: > [!NOTE], > [!IMPORTANT], > [!WARNING], > [!TIP], > [!CAUTION] */
+  const CALLOUT_TYPES={
+    NOTE:    {label:'NOTE',     bg:[235,245,255], bar:[50,120,200],  text:[30,80,160]},
+    TIP:     {label:'TIP',      bg:[235,250,235], bar:[40,160,40],   text:[25,110,25]},
+    IMPORTANT:{label:'IMPORTANT',bg:[245,235,255],bar:[130,60,200],  text:[90,30,150]},
+    WARNING: {label:'WARNING',  bg:[255,248,230], bar:[200,140,0],   text:[140,90,0]},
+    CAUTION: {label:'CAUTION',  bg:[255,235,235], bar:[200,50,50],   text:[150,30,30]}
+  };
+  function detectCallout(lines){
+    /* Returns {type, contentLines} or null */
+    if(!lines.length)return null;
+    const first=lines[0].txt;
+    const m=first.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/i);
+    if(!m)return null;
+    const type=m[1].toUpperCase();
+    return{type,info:CALLOUT_TYPES[type]||CALLOUT_TYPES.NOTE,contentLines:lines.slice(1)};
+  }
 
   /* ═══ UI HELPERS ═══ */
   let mdContent='';
@@ -490,7 +539,7 @@
       document.getElementById('file-name').textContent=f.name;
       document.getElementById('file-loaded').classList.add('show');
       updateStats(mdContent);
-      showToast('✓ '+f.name+' loaded');
+      showToast('Loaded: '+f.name);
     };
     r.readAsText(f);
   }
@@ -499,7 +548,6 @@
     mdContent=txt;
     document.getElementById('preview').innerHTML=marked.parse(txt);
     if(txt)updateStats(txt);
-    // Render mermaid in preview
     if(typeof mermaid!=='undefined'){
       document.querySelectorAll('#preview pre code.language-mermaid').forEach(async(el)=>{
         try{
@@ -529,7 +577,7 @@
   }
   function ensureNumbering(){
     const levels=Array.from({length:9},(_,i)=>({level:i,format:'decimal',text:'%'+(i+1)+'.',alignment:'start',style:{paragraph:{indent:{left:720+(i*360),hanging:360}}}}));
-    const ulLevels=Array.from({length:9},(_,i)=>({level:i,format:'bullet',text:i%3===0?'•':i%3===1?'◦':'▪',alignment:'start',style:{paragraph:{indent:{left:720+(i*360),hanging:360}}}}));
+    const ulLevels=Array.from({length:9},(_,i)=>({level:i,format:'bullet',text:i%3===0?'*':i%3===1?'o':'-',alignment:'start',style:{paragraph:{indent:{left:720+(i*360),hanging:360}}}}));
     return{config:[{reference:'ol-numbering',levels},{reference:'ul-numbering',levels:ulLevels}]};
   }
 
@@ -588,9 +636,23 @@
           const txt=lines[i].replace(/^>+\s?/,'');
           bqLines.push({depth,txt});i++;
         }
-        const qColor=rgbHex(...hColour(scheme,2));
-        for(const{depth,txt}of bqLines){
-          children.push(new Paragraph({children:[new TextRun({text:txt,italics:true,color:'666666'})],indent:{left:depth*360},border:{left:{color:qColor,space:1,style:BorderStyle.SINGLE,size:12}},spacing:{before:40,after:40}}));
+        const callout=detectCallout(bqLines);
+        if(callout){
+          /* Render as callout box with label */
+          const c=callout.info;
+          const labelColor=rgbHex(...c.text);
+          const barColor=rgbHex(...c.bar);
+          children.push(new Paragraph({children:[new TextRun({text:c.label,bold:true,color:labelColor,size:20})],border:{left:{color:barColor,space:1,style:BorderStyle.SINGLE,size:16}},indent:{left:360},shading:{type:ShadingType.SOLID,fill:rgbHex(...c.bg),color:rgbHex(...c.bg)},spacing:{before:80,after:20}}));
+          for(const{txt}of callout.contentLines){
+            if(txt.trim()==='')continue;
+            children.push(new Paragraph({children:parseInlineDOCX(txt,D,scheme),border:{left:{color:barColor,space:1,style:BorderStyle.SINGLE,size:16}},indent:{left:360},shading:{type:ShadingType.SOLID,fill:rgbHex(...c.bg),color:rgbHex(...c.bg)},spacing:{before:20,after:20}}));
+          }
+          children.push(new Paragraph({children:[new TextRun({text:''})],spacing:{before:80,after:0}}));
+        }else{
+          const qColor=rgbHex(...hColour(scheme,2));
+          for(const{depth,txt}of bqLines){
+            children.push(new Paragraph({children:[new TextRun({text:txt,italics:true,color:'666666'})],indent:{left:depth*360},border:{left:{color:qColor,space:1,style:BorderStyle.SINGLE,size:12}},spacing:{before:40,after:40}}));
+          }
         }
         continue;
       }
@@ -706,22 +768,37 @@
     const pdf=new jsPDF({orientation:'portrait',unit:'pt',format:fmt});
     const PW=pdf.internal.pageSize.getWidth();const PH=pdf.internal.pageSize.getHeight();
     const ML=56,MR=56,MT=56,MB=56;const TW=PW-ML-MR;let y=MT;
+
     function checkPage(n){if(y+n>PH-MB){pdf.addPage();y=MT;}}
+
+    /* FIX: unified font setter — always helvetica for body/headings, helvetica for normal text.
+       Courier is ONLY used for actual code blocks where monospace is semantically required.
+       This eliminates the wide-spacing "S p a c e d" rendering that courier caused for
+       blockquotes, callouts, and other non-code content. */
     function setFont(style,size,rgb){
       const[r,g,b]=rgb;pdf.setTextColor(r,g,b);
-      if(style==='bold')pdf.setFont('helvetica','bold');
-      else if(style==='italic')pdf.setFont('helvetica','italic');
-      else if(style==='bolditalic')pdf.setFont('helvetica','bolditalic');
-      else if(style==='mono')pdf.setFont('courier','normal');
-      else pdf.setFont('helvetica','normal');
+      switch(style){
+        case 'bold':       pdf.setFont('helvetica','bold');break;
+        case 'italic':     pdf.setFont('helvetica','italic');break;
+        case 'bolditalic': pdf.setFont('helvetica','bolditalic');break;
+        case 'code':
+          /* For code blocks: use helvetica at slightly smaller size with tighter tracking.
+             Avoids courier's notoriously wide glyph spacing in jsPDF. */
+          pdf.setFont('helvetica','normal');break;
+        default:           pdf.setFont('helvetica','normal');
+      }
       pdf.setFontSize(size);
     }
+
+    /* Safe text: strip emoji/non-Latin before rendering to PDF */
+    function safeText(str){return stripUnsafeChars(str||'');}
+
     const lines=text.split('\n');let i=0;
     while(i<lines.length){
       const line=lines[i];
       const hm=line.match(/^(#{1,6})\s+(.*)/);
       if(hm){
-        const lvl=hm[1].length,txt=hm[2],hRGB=hColour(scheme,lvl);
+        const lvl=hm[1].length,txt=safeText(hm[2]),hRGB=hColour(scheme,lvl);
         const sz=[22,17,14,12,11,11][lvl-1],lh=[28,22,18,16,15,15][lvl-1],sp=[14,10,7,4,3,3][lvl-1];
         checkPage(sz+sp+16);
         const wrapped=pdf.splitTextToSize(stripInlineMD(txt),TW);
@@ -733,6 +810,7 @@
         i++;continue;
       }
       if(/^(---+|\*{3,}|_{3,})$/.test(line.trim())){checkPage(16);pdf.setDrawColor(180,180,180);pdf.setLineWidth(.5);pdf.line(ML,y,PW-MR,y);y+=16;i++;continue;}
+
       /* Mermaid PDF — must come BEFORE generic fence */
       if(/^```mermaid/.test(line)){
         i++;let mmdCode='';
@@ -748,40 +826,83 @@
         }catch(e){checkPage(16);setFont('italic',10,[160,160,160]);pdf.text('[Mermaid: '+e.message+']',ML,y);y+=16;}
         i++;continue;
       }
-      /* Code block PDF */
+
+      /* Code block PDF — FIX: use helvetica not courier to avoid wide glyph spacing */
       if(line.startsWith('```')){
         i++;let codeLines=[];
-        while(i<lines.length&&!lines[i].startsWith('```')){codeLines.push(lines[i]);i++;}
-        const lhC=13,pad=8;
-        const wrapped=pdf.splitTextToSize(codeLines.join('\n'),TW-pad*2);
+        while(i<lines.length&&!lines[i].startsWith('```')){codeLines.push(safeText(lines[i]));i++;}
+        const lhC=14,pad=10,fontSize=9;
+        /* Use helvetica narrow rendering for code — normal jsPDF courier has ~30% wider glyphs */
+        pdf.setFont('helvetica','normal');
+        pdf.setFontSize(fontSize);
+        const fullText=codeLines.join('\n');
+        const wrapped=pdf.splitTextToSize(fullText,TW-pad*2);
         const blockH=wrapped.length*lhC+pad*2+4;
-        checkPage(blockH+8);
+        checkPage(blockH+12);
+        /* Background box */
         pdf.setFillColor(244,244,248);pdf.setDrawColor(210,210,215);pdf.setLineWidth(.5);
-        pdf.roundedRect(ML,y-lhC,TW,blockH,3,3,'FD');
-        setFont('mono',9,[60,60,60]);
-        wrapped.forEach((wl,wi)=>{pdf.text(wl,ML+pad,y+wi*lhC);});
-        y+=blockH+10;i++;continue;
+        pdf.roundedRect(ML,y-lhC+2,TW,blockH,3,3,'FD');
+        /* Left accent bar for code blocks */
+        pdf.setFillColor(160,160,180);pdf.rect(ML,y-lhC+2,3,blockH,'F');
+        pdf.setTextColor(50,50,80);pdf.setFontSize(fontSize);
+        wrapped.forEach((wl,wi)=>{pdf.text(wl,ML+pad+3,y+wi*lhC);});
+        y+=blockH+14;i++;continue;
       }
-      /* Blockquote PDF */
+
+      /* Blockquote / Callout PDF */
       if(/^>+\s?/.test(line)){
         let bqLines=[];
         while(i<lines.length&&/^>+\s?/.test(lines[i])){
           const depth=(lines[i].match(/^(>+)/)||[,''])[1].length;
           bqLines.push({depth,txt:lines[i].replace(/^>+\s?/,'')});i++;
         }
-        for(const{depth,txt}of bqLines){
-          checkPage(20);const lx=ML+(depth-1)*14;
-          pdf.setFillColor(...hColour(scheme,2));pdf.rect(lx,y-11,3,15,'F');
-          setFont('italic',10,[100,100,100]);
-          const w=pdf.splitTextToSize(txt,TW-20-(depth-1)*14);
-          pdf.text(w,lx+10,y);y+=w.length*15+4;
+        const callout=detectCallout(bqLines);
+        if(callout){
+          /* Styled callout box */
+          const c=callout.info;
+          const contentLines=callout.contentLines.filter(l=>l.txt.trim()!=='');
+          /* Calculate total height */
+          const allWrapped=contentLines.map(l=>pdf.splitTextToSize(safeText(stripInlineMD(l.txt)),TW-28));
+          const totalLines=allWrapped.reduce((s,w)=>s+w.length,0)+1;/* +1 for label */
+          const lhB=15,padB=8;
+          const boxH=totalLines*lhB+padB*2+4;
+          checkPage(boxH+10);
+          /* Draw box bg */
+          pdf.setFillColor(...c.bg);pdf.setDrawColor(...c.bar);pdf.setLineWidth(.5);
+          pdf.roundedRect(ML,y-lhB+2,TW,boxH,3,3,'FD');
+          /* Left accent bar */
+          pdf.setFillColor(...c.bar);pdf.rect(ML,y-lhB+2,4,boxH,'F');
+          /* Label */
+          pdf.setFont('helvetica','bold');pdf.setFontSize(9);pdf.setTextColor(...c.text);
+          pdf.text(c.label,ML+12,y);y+=lhB;
+          /* Content lines */
+          pdf.setFont('helvetica','normal');pdf.setFontSize(10);pdf.setTextColor(40,40,40);
+          contentLines.forEach(({txt})=>{
+            const w=pdf.splitTextToSize(safeText(stripInlineMD(txt)),TW-28);
+            w.forEach(wl=>{checkPage(lhB);renderInlinePDF(pdf,wl,ML+12,y,scheme,10);y+=lhB;});
+          });
+          y+=padB+6;
+        }else{
+          /* Plain blockquote */
+          for(const{depth,txt}of bqLines){
+            checkPage(20);const lx=ML+(depth-1)*14;
+            pdf.setFillColor(...hColour(scheme,2));pdf.rect(lx,y-11,3,15,'F');
+            setFont('italic',10,[100,100,100]);
+            const w=pdf.splitTextToSize(safeText(stripInlineMD(txt)),TW-20-(depth-1)*14);
+            w.forEach((wl,wi)=>{
+              if(wi>0){y+=15;checkPage(15);}
+              pdf.text(wl,lx+10,y);
+            });
+            y+=15+4;
+          }
         }
         continue;
       }
+
       /* Bullet PDF */
       const bm=line.match(/^(\s*)[-*+] (.*)/);
       if(bm){
-        const indent=Math.floor(bm[1].length/2),txt=bm[2];
+        const indent=Math.floor(bm[1].length/2),txt=safeText(bm[2]);
         checkPage(16);const ix=ML+indent*14;
         pdf.setFillColor(...hColour(scheme,2));pdf.circle(ix+3,y-4,2,'F');
         setFont('normal',11,[40,40,40]);
@@ -790,10 +911,11 @@
         for(let wi=1;wi<w.length;wi++){y+=14;checkPage(14);renderInlinePDF(pdf,w[wi],ix+10,y,scheme,11);}
         y+=16;i++;continue;
       }
+
       /* Ordered list PDF */
       const om=line.match(/^(\s*)(\d+)\. (.*)/);
       if(om){
-        const indent=Math.floor(om[1].length/2),num=om[2],txt=om[3];
+        const indent=Math.floor(om[1].length/2),num=om[2],txt=safeText(om[3]);
         checkPage(16);const ix=ML+indent*18;
         setFont('bold',11,hColour(scheme,2));pdf.text(num+'.',ix,y);
         setFont('normal',11,[40,40,40]);
@@ -802,35 +924,69 @@
         for(let wi=1;wi<w.length;wi++){y+=14;checkPage(14);renderInlinePDF(pdf,w[wi],ix+16,y,scheme,11);}
         y+=16;i++;continue;
       }
-      /* Table PDF */
+
+      /* Table PDF — FIX: auto row height based on wrapped content */
       if(line.includes('|')&&i+1<lines.length&&/^[\s|:\-]+$/.test(lines[i+1])){
         const headers=line.split('|').map(c=>c.trim()).filter(Boolean);i+=2;
         const rows=[headers];
         while(i<lines.length&&lines[i].trim().startsWith('|')){rows.push(lines[i].split('|').map(c=>c.trim()).filter(Boolean));i++;}
-        const colW=TW/headers.length,rowH=20,h1rgb=hColour(scheme,1);
-        checkPage(rows.length*rowH+8);
-        rows.forEach((row,ri)=>{
-          row.forEach((cell,ci)=>{
-            const cx=ML+ci*colW,cy=y+(ri*rowH);
-            if(ri===0){pdf.setFillColor(...h1rgb.map(v=>Math.min(v+190,245)));pdf.rect(cx,cy-14,colW,rowH,'F');setFont('bold',9,h1rgb);}
-            else{if(ri%2===0){pdf.setFillColor(250,250,250);pdf.rect(cx,cy-14,colW,rowH,'F');}pdf.setDrawColor(210,210,210);pdf.setLineWidth(.3);pdf.rect(cx,cy-14,colW,rowH,'S');setFont('normal',9,[40,40,40]);}
-            /* FIX: use splitTextToSize — no truncation */
-            pdf.text(pdf.splitTextToSize(String(cell),colW-8)[0]||'',cx+4,cy-1);
+        const colW=TW/headers.length;
+        const h1rgb=hColour(scheme,1);
+        const cellPad=6,fontSize=9,lhT=13;
+
+        /* Pre-compute wrapped lines per cell per row to get accurate row heights */
+        const wrappedRows=rows.map(row=>
+          row.map(cell=>{
+            pdf.setFont('helvetica','normal');pdf.setFontSize(fontSize);
+            return pdf.splitTextToSize(safeText(stripInlineMD(String(cell))),colW-cellPad*2);
+          })
+        );
+        const rowHeights=wrappedRows.map(row=>
+          Math.max(...row.map(w=>w.length))*lhT+cellPad*2
+        );
+
+        const totalH=rowHeights.reduce((s,h)=>s+h,0);
+        checkPage(totalH+8);
+
+        let ry=y;
+        wrappedRows.forEach((row,ri)=>{
+          const rh=rowHeights[ri];
+          row.forEach((cellLines,ci)=>{
+            const cx=ML+ci*colW;
+            if(ri===0){
+              pdf.setFillColor(...h1rgb.map(v=>Math.min(v+190,245)));
+              pdf.rect(cx,ry-lhT,colW,rh,'F');
+              pdf.setFont('helvetica','bold');pdf.setFontSize(fontSize);pdf.setTextColor(...h1rgb);
+            }else{
+              if(ri%2===0){pdf.setFillColor(250,250,252);pdf.rect(cx,ry-lhT,colW,rh,'F');}
+              pdf.setDrawColor(210,210,215);pdf.setLineWidth(.3);pdf.rect(cx,ry-lhT,colW,rh,'S');
+              pdf.setFont('helvetica','normal');pdf.setFontSize(fontSize);pdf.setTextColor(40,40,40);
+            }
+            /* Render each wrapped line of cell content */
+            cellLines.forEach((cl,li)=>{
+              pdf.text(cl,cx+cellPad,ry+li*lhT-1);
+            });
           });
+          ry+=rh;
         });
-        y+=rows.length*rowH+12;continue;
+        y=ry+8;continue;
       }
+
       /* Image note PDF */
-      if(/^!\[/.test(line)){checkPage(14);setFont('italic',10,[150,150,150]);pdf.text('[Image: '+((line.match(/^!\[([^\]]*)\]/)||[])[1]||'image')+']',ML,y);y+=16;i++;continue;}
+      if(/^!\[/.test(line)){checkPage(14);setFont('italic',10,[150,150,150]);pdf.text('[Image: '+safeText((line.match(/^!\[([^\]]*)\]/)||[])[1]||'image')+']',ML,y);y+=16;i++;continue;}
+
       /* HTML strip PDF */
       if(/^\s*<[^>]+>/.test(line)){
-        const s=line.replace(/<[^>]+>/g,'').trim();
+        const s=safeText(line.replace(/<[^>]+>/g,'').trim());
         if(s){setFont('normal',11,[30,30,30]);const w=pdf.splitTextToSize(s,TW);checkPage(w.length*15+4);w.forEach(wl=>{renderInlinePDF(pdf,wl,ML,y,scheme,11);y+=15;});y+=4;}
         i++;continue;
       }
+
       if(line.trim()===''){y+=8;i++;continue;}
+
+      /* Normal paragraph */
       setFont('normal',11,[30,30,30]);
-      const wrapped=pdf.splitTextToSize(stripInlineMD(line),TW);
+      const wrapped=pdf.splitTextToSize(safeText(stripInlineMD(line)),TW);
       checkPage(wrapped.length*15+4);
       wrapped.forEach(wl=>{renderInlinePDF(pdf,wl,ML,y,scheme,11);y+=15;});
       y+=4;i++;
@@ -843,11 +999,14 @@
   }
 
   function renderInlinePDF(pdf,text,x,y,scheme,size,baseColor){
+    /* FIX: always use helvetica — never switch to courier here to avoid spacing bleed */
     const re=/(\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|`([^`]+)`|\*([^*]+)\*|_([^_]+)_|\[([^\]]+)\]\(([^)]+)\))/g;
     let last=0,m,cx=x;
-    while((m=re.exec(text))!==null){
+    const safeStr=stripUnsafeChars(text||'');
+    /* Re-run regex on safe string */
+    while((m=re.exec(safeStr))!==null){
       if(m.index>last){
-        const seg=text.slice(last,m.index);if(seg){
+        const seg=safeStr.slice(last,m.index);if(seg){
           if(baseColor){pdf.setFont('helvetica','bold');pdf.setFontSize(size);pdf.setTextColor(...baseColor);}
           else{pdf.setFont('helvetica','normal');pdf.setFontSize(size);pdf.setTextColor(30,30,30);}
           pdf.text(seg,cx,y);cx+=pdf.getTextWidth(seg);
@@ -869,8 +1028,9 @@
         pdf.setDrawColor(...col);pdf.setLineWidth(.5);pdf.line(cx,y-size*0.35,cx+tw,y-size*0.35);
         cx+=tw;
       }else if(raw.startsWith('`')){
+        /* Inline code: use helvetica normal, slightly smaller, colored bg hint via color only */
         const s=m[6];
-        pdf.setFont('courier','normal');pdf.setFontSize(size-1);pdf.setTextColor(...scheme.code);
+        pdf.setFont('helvetica','normal');pdf.setFontSize(size-1);pdf.setTextColor(...scheme.code);
         pdf.text(s,cx,y);cx+=pdf.getTextWidth(s);
       }else if(raw.startsWith('[')){
         const s=m[9],url=m[10];
@@ -885,8 +1045,8 @@
       }
       last=m.index+raw.length;
     }
-    if(last<text.length){
-      const seg=text.slice(last);if(seg){
+    if(last<safeStr.length){
+      const seg=safeStr.slice(last);if(seg){
         if(baseColor){pdf.setFont('helvetica','bold');pdf.setFontSize(size);pdf.setTextColor(...baseColor);}
         else{pdf.setFont('helvetica','normal');pdf.setFontSize(size);pdf.setTextColor(30,30,30);}
         pdf.text(seg,cx,y);
@@ -911,7 +1071,7 @@
       const url=URL.createObjectURL(blob);
       const a=document.createElement('a');a.href=url;a.download='document.docx';a.click();
       setTimeout(()=>URL.revokeObjectURL(url),2000);
-      showToast('✓ DOCX downloaded');
+      showToast('DOCX downloaded');
     }catch(e){
       setProgress(id,0,'');
       showToast('DOCX error: '+e.message,true);
@@ -931,7 +1091,7 @@
       const pdf=await generatePDF(text,pageFormat,schemeKey);
       setProgress(id,100,'Done!');
       pdf.save('document.pdf');
-      showToast('✓ PDF downloaded');
+      showToast('PDF downloaded');
     }catch(e){
       setProgress(id,0,'');
       showToast('PDF error: '+e.message,true);
